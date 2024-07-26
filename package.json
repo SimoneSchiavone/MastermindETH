@@ -1,0 +1,22 @@
+{
+  "name": "mastermindeth",
+  "version": "1.0.0",
+  "description": "Final project for the *P2P Systems & Blockchain* 2024 course at Università di Pisa.",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "@nomicfoundation/hardhat-toolbox": "^5.0.0",
+    "@types/chai": "^4.3.16",
+    "@types/mocha": "^10.0.7",
+    "@types/node": "^20.14.12",
+    "chai": "^4.5.0",
+    "hardhat": "^2.22.6",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.5.4"
+  }
+}
