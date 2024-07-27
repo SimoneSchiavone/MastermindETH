@@ -29,7 +29,7 @@ contract MastermindGame {
      */
     constructor(uint _availableColors, uint _codeSize, uint _noGuessedReward){
         require(_availableColors>1,"The number of available colors should be greater than 1!");
-        require(_codeSize>1,"The number of available colors should be greater than 1!");
+        require(_codeSize>1,"The code size should be greater than 1!");
         require(_noGuessedReward>0, "The extra reward for the code maker has to be greater than 0!");
         availableColors=_availableColors;
         codeSize=_codeSize;
