@@ -21,6 +21,15 @@ contract MastermindGame {
     uint public noGuessedReward; 
     //extra reward for the code maker if the code breaker was not able to guess the code.
 
+    //Matches struct contains the addresses of the 2 players
+    struct Match{
+        address player1;
+        address player2;
+    }
+    mapping(uint => Match) activeMatches; //maps an active matchId to the players addresses
+    uint activeMatchesNum=0; //counts active matches
+    uint private nextMatchId=0; //matchId generation
+
     /**
      * @notice Constructor function of the contract
      * @param _availableColors number of colors usable in the code
@@ -36,6 +45,21 @@ contract MastermindGame {
         noGuessedReward=_noGuessedReward;
         gameManager=msg.sender;
     }
-   
+    
+    /**
+     * @notice Function invoked in order to create a new game (the unique actual participant 
+     * is the creator of the game)
+     */ 
+    function createGame() public returns (uint matchId) {
+        //Initialize a new match
+        Match memory newGame;
+        newGame.player1=msg.sender;
+        newGame.player2=address(0);
+        
+        activeMatches[nextMatchId]=newGame; //vedere come si aggiunge al mapping
+        console.log("Inserted new game: with id %s and value %s and %s",nextMatchId, activeMatches[nextMatchId].player1, activeMatches[nextMatchId].player2);
+        nextMatchId++;
+        return (nextMatchId-1);
+    }
 
 }
