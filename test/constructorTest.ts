@@ -52,17 +52,10 @@ describe("Game Contract", function(){
         //Check that the new match is created with the proper gameId
         it("Match has to be created with the proper gameId", async function () {
             const {owner, MastermindGame}=await loadFixture(deployFixture);
-            const returnedId1 = await MastermindGame.createGame();
-            console.log("Returned %s",returnedId1)
-            expect(returnedId1.value).to.equal(0);
-
-            const returnedId2 = await MastermindGame.createGame();
-            console.log("Returned %s",returnedId2)
-            expect(returnedId2.value).to.equal(1);
-            
-            //C'è qualcosa che non funziona nell'ottenere la risposta dalla transazione
-            //I game sono registrati correttamente ma la risposta non è interpretata bene
+            expect(await MastermindGame.createGame()).to.emit(MastermindGame, "newGameCreated").withArgs(owner.address,0);
+            expect(await MastermindGame.createGame()).to.emit(MastermindGame, "newGameCreated").withArgs(owner.address,1);
         })
     })
+    //Aggiungi controllo sul proprietario corretto
   })
   
