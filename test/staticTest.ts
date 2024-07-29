@@ -7,7 +7,7 @@ describe("Game Contract", function(){
     const codesize=10;
     const reward=5;
 
-    async function deployFixture() {
+    async function onlyDeployFixture() {
         const [owner, otherAccount] =await hre.ethers.getSigners();
 
         const MastermindGame__factory = await hre.ethers.getContractFactory("MastermindGame");
@@ -15,10 +15,17 @@ describe("Game Contract", function(){
 
         return{ owner, MastermindGame}
     }
+
+    async function deployAndMatchCreateFixture() {
+        const {owner, MastermindGame}=await loadFixture(onlyDeployFixture);
+        expect(await MastermindGame.createGame());
+        return { owner, MastermindGame};
+    }
+
     describe("Contract creation", function(){
         //Check that the assignment of the value is correct in case of right parameters
         it("Constructor should initialize the game parameters", async function () {
-            const {owner, MastermindGame}=await loadFixture(deployFixture);
+            const {owner, MastermindGame}=await loadFixture(onlyDeployFixture);
             expect(await MastermindGame.codeSize()).to.equal(codesize);
             expect(await MastermindGame.availableColors()).to.equal(colors);
             expect(await MastermindGame.noGuessedReward()).to.equal(reward);
@@ -51,19 +58,29 @@ describe("Game Contract", function(){
     describe("New match creation",function(){
         //Checks that the new match is created with the proper gameId
         it("Match has to be created with the proper gameId", async function () {
-            const {owner, MastermindGame}=await loadFixture(deployFixture);
+            const {owner, MastermindGame}=await loadFixture(onlyDeployFixture);
             expect(await MastermindGame.createGame()).to.emit(MastermindGame, "newGameCreated").withArgs(owner.address,0);
             expect(await MastermindGame.createGame()).to.emit(MastermindGame, "newGameCreated").withArgs(owner.address,1);
         })
 
         //Checks that the new match is created with the proper creator address and "joiner" address
         it("Match has to be created with the proper creator address", async function () {
-            const {owner, MastermindGame}=await loadFixture(deployFixture);
+            const {owner, MastermindGame}=await loadFixture(onlyDeployFixture);
             await MastermindGame.createGame();
             expect(await MastermindGame.getMatchCreator(0)).to.equal(owner.address);
             expect(MastermindGame.getMatchJoiner(0)).to.be.revertedWith("This game is waiting for an opponent!");
         })
     })
-    //Aggiungi controllo sul proprietario corretto
+
+    describe("Match join",function(){
+        describe("Case ID given by the user", function(){
+            it("Creator cannot join again in the same match", async function () {
+                const {owner, MastermindGame}=await loadFixture(deployAndMatchCreateFixture);
+                //For the first match created the id will be surely 0
+                await expect(MastermindGame.joinMatchWithId(0)).to.be.revertedWith("You cannot join a match created by yourself!");
+            })
+            
+        })
+    })
   })
   

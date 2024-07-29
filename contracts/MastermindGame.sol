@@ -27,12 +27,13 @@ contract MastermindGame {
         address player2;
     }
     mapping(uint => Match) public activeMatches; //maps an active matchId to the players addresses
-    uint[] matchesWaitingForAnOpponent; //list of the matchesIDs of matches waiting the secondo player
+    uint[] matchesWaitingForAnOpponent; //array of the matchesIDs of matches waiting the secondo player
 
     uint activeMatchesNum=0; //counts active matches
     uint private nextMatchId=0; //matchId generation
 
-    event newGameCreated(address creator, uint newGameId); //event emitted when a new game is created
+    event newMatchCreated(address creator, uint newMatchId); //event emitted when a new match is created
+    event secondPlayerJoined(address opponent, uint matchId); //event emitted when an opponent joins a match that was waiting
 
     /**
      * @notice Constructor function of the contract
@@ -64,7 +65,7 @@ contract MastermindGame {
         activeMatches[nextMatchId]=newGame;
         matchesWaitingForAnOpponent.push(nextMatchId);
 
-        emit newGameCreated(newGame.player1,(nextMatchId));
+        emit newMatchCreated(newGame.player1,(nextMatchId));
         
         nextMatchId++; //counter for the next new matchId
         activeMatchesNum++; //counter for the current active matches
@@ -98,5 +99,62 @@ contract MastermindGame {
         require(activeMatches[id].player1!=address(0),"No active games with that Id!");
         require(activeMatches[id].player2!=address(0),"This game is waiting for an opponent!");
         return activeMatches[id].player2;
+    }
+
+    function joinMatchWithId(uint id) public{
+        require(activeMatches[id].player1!=address(0),"There is no match with that id");
+        require(activeMatches[id].player2==address(0),"That match is full");
+        require(activeMatches[id].player1!=msg.sender,"You cannot join a match created by yourself!");
+
+        activeMatches[id].player2=msg.sender; //add the second player
+        delete matchesWaitingForAnOpponent[uintArrayFind(matchesWaitingForAnOpponent,id)]; //we remove from the array of waiting matches the one we have just composed.
+
+        emit secondPlayerJoined(msg.sender, id);
+    }
+
+    function joinMatch() public{
+        require(matchesWaitingForAnOpponent.length>0,"Currently no matches are available, try to create a new one!");
+
+        uint randIdx=randNo(matchesWaitingForAnOpponent.length); //generate a number in [0, current number of available matches]
+        uint id=matchesWaitingForAnOpponent[randIdx]; //get the id of the waiting match associated to the idx generated above
+
+        require(activeMatches[id].player2==address(0),"That match is full");
+        require(activeMatches[id].player1!=msg.sender,"You cannot join a match created by yourself!");
+        
+        activeMatches[id].player2=msg.sender; //add the second player
+        delete matchesWaitingForAnOpponent[uintArrayFind(matchesWaitingForAnOpponent,id)]; //we remove from the array of waiting matches the one we have just composed.
+
+        emit secondPlayerJoined(msg.sender, id);
+    }
+
+    /**
+     * @notice The functions return a pseudo-random number lower than mod
+     * @param mod int used in the % operation to get a number lower than mod
+     */
+    function randNo(uint mod) private view returns (uint){
+        bytes32 bhash= blockhash(block.number-1);
+        bytes memory bytesArray = new bytes(32);
+        for(uint i; i<32; i++){
+            bytesArray[i]=bhash[i];
+        }
+        bytes32 rand=keccak256(bytesArray);
+        uint out=uint(rand)%mod;
+        return out;
+    }
+
+    /**
+     * @notice Pure function that finds a given uint in an array of uints. It returns the
+     * index in the array of the occurrence if present, otherwise it revets the execution.
+     * @param array base array on which we carry out the search.
+     * @param target value to find.
+     */
+    function uintArrayFind(uint[] memory array, uint target) private pure returns (uint){
+        for(uint i=0; i<array.length;i++){
+            if(array[i]==target){
+                return i;
+            }
+        }
+        revert("Value not found in the array!");
+
     }
 }
