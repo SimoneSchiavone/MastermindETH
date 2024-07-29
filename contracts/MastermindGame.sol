@@ -23,11 +23,15 @@ contract MastermindGame {
     //---MATCH MANAGEMENT---
     //Matches struct contains the addresses of the 2 players
     struct Match{
-        address player1;
-        address player2;
+        address player1; //creator of the match
+        address player2; //second player
     }
+
     mapping(uint => Match) public activeMatches; //maps an active matchId to the players addresses
-    uint[] matchesWaitingForAnOpponent; //array of the matchesIDs of matches waiting the secondo player
+    uint[] publicMatchesWaitingForAnOpponent; 
+    //array of the matchesIDs of matches without "player2" specified waiting for a player
+    uint[] privateMatchesWaitingForAnOpponent; 
+    //array of the matchesIDs of matches without "player2" specified waiting for a player
 
     uint activeMatchesNum=0; //counts active matches
     uint private nextMatchId=0; //matchId generation
@@ -53,19 +57,19 @@ contract MastermindGame {
     
     //---MATCHMAKING PHASE---
     /**
-     * @notice Function invoked in order to create a new game (the unique actual participant 
-     * is the creator of the game)
+     * @notice Function invoked in order to create a new game without setting
+     * the address of the opponent.
      */ 
-    function createGame() public returns (uint matchId) {
+    function createMatch() public returns (uint matchId) {
         //Initialize a new match
-        Match memory newGame;
-        newGame.player1=msg.sender;
-        newGame.player2=address(0);
+        Match memory newMatch;
+        newMatch.player1=msg.sender;
+        newMatch.player2=address(0);
         
-        activeMatches[nextMatchId]=newGame;
-        matchesWaitingForAnOpponent.push(nextMatchId);
+        activeMatches[nextMatchId]=newMatch;
+        publicMatchesWaitingForAnOpponent.push(nextMatchId);
 
-        emit newMatchCreated(newGame.player1,(nextMatchId));
+        emit newMatchCreated(newMatch.player1,(nextMatchId));
         
         nextMatchId++; //counter for the next new matchId
         activeMatchesNum++; //counter for the current active matches
@@ -73,11 +77,28 @@ contract MastermindGame {
         return (nextMatchId-1);
     }
 
-    function getActiveMatches() public view{
-        console.log("ACTIVE GAMES\n");
-        for(uint i=0; i<nextMatchId; i++){
-            console.log("GameId %d: %s VS %s\n", i, activeMatches[i].player1, activeMatches[i].player2);
-        }
+    /**
+     * @notice Function invoked in order to create a new game and setting
+     * the address of the opponent.
+     */ 
+    function createPrivateMatch(address opponent) public returns (uint matchId) {
+        require(opponent!=address(0),"Invalid address");
+        require(opponent!=msg.sender,"You can't be both creator of the match and second player!");
+
+        //Initialize a new match
+        Match memory newMatch;
+        newMatch.player1=msg.sender;
+        newMatch.player2=opponent;
+        
+        activeMatches[nextMatchId]=newMatch;
+        privateMatchesWaitingForAnOpponent.push(nextMatchId);
+
+        emit newMatchCreated(newMatch.player1,(nextMatchId));
+        
+        nextMatchId++; //counter for the next new matchId
+        activeMatchesNum++; //counter for the current active matches
+        
+        return (nextMatchId-1);
     }
 
     /**
@@ -92,38 +113,71 @@ contract MastermindGame {
 
     /**
      * @notice Function return the address of the second player of the match whose id is "id". It fails if
-     * the give id is not related to any active match or if that match is still waiting for an opponent.
+     * the given id is not related to any active match or if that match is still waiting for an opponent.
+     * Notice that the match creator can have specified the address of the contender but he/she may have not
+     * already join the match.
      * @param id id of the match whe are looking for
      */
-    function getMatchJoiner(uint id) public view returns (address){
+    function getSecondPlayer(uint id) public view returns (address){
         require(activeMatches[id].player1!=address(0),"No active games with that Id!");
-        require(activeMatches[id].player2!=address(0),"This game is waiting for an opponent!");
+        require(activeMatches[id].player2!=address(0),"This game is waiting for an opponent!"); 
         return activeMatches[id].player2;
     }
 
+    /**
+     * @notice Function that allow to join the match with id "id". In order to succeed in this operation we need that:
+     * - the game has a slot available for any second player
+     * OR
+     * - the game has a slot reserved for me
+     * @param id identifier of the game we would like to join
+     */
     function joinMatchWithId(uint id) public{
         require(activeMatches[id].player1!=address(0),"There is no match with that id");
-        require(activeMatches[id].player2==address(0),"That match is full");
         require(activeMatches[id].player1!=msg.sender,"You cannot join a match created by yourself!");
 
-        activeMatches[id].player2=msg.sender; //add the second player
-        delete matchesWaitingForAnOpponent[uintArrayFind(matchesWaitingForAnOpponent,id)]; //we remove from the array of waiting matches the one we have just composed.
+        if(activeMatches[id].player2!=address(0)){ //second address not "null"
+            if(uintArrayContains(privateMatchesWaitingForAnOpponent,id)){ //second address specified but user not arealdy joined
+                //check that I'm the authorized opponent
+                require(activeMatches[id].player2==msg.sender,"You are not authorized to join this match!");
 
-        emit secondPlayerJoined(msg.sender, id);
+                activeMatches[id].player2=msg.sender; //add the second player
+
+                uint idToDelete=uintArrayFind(privateMatchesWaitingForAnOpponent,id); //index in the array of the completed match
+                popByIndex(privateMatchesWaitingForAnOpponent,idToDelete); //this match is no more in waiting status
+
+                emit secondPlayerJoined(msg.sender, id);
+            }else{ //second address is specified and that match is not in the list of the available ones
+                revert("This match is already full!");
+            }
+        }else{ //blank second address means that everyone can join this game
+                activeMatches[id].player2=msg.sender; //add the second player
+
+                uint idToDelete=uintArrayFind(publicMatchesWaitingForAnOpponent,id); //index in the array of the completed match
+                popByIndex(publicMatchesWaitingForAnOpponent,idToDelete); //this match is no more in waiting status
+
+                emit secondPlayerJoined(msg.sender, id);
+        }
     }
 
+    /**
+     * @notice Function that allow to join one on the available matches that are still
+     * waiting for a second player. It will fail if there is no match available.
+     */
     function joinMatch() public{
-        require(matchesWaitingForAnOpponent.length>0,"Currently no matches are available, try to create a new one!");
+        require(publicMatchesWaitingForAnOpponent.length>0,"Currently no matches are available, try to create a new one!");
 
-        uint randIdx=randNo(matchesWaitingForAnOpponent.length); //generate a number in [0, current number of available matches]
-        uint id=matchesWaitingForAnOpponent[randIdx]; //get the id of the waiting match associated to the idx generated above
+        uint randIdx=randNo(publicMatchesWaitingForAnOpponent.length); //generate a number in [0, current number of available matches]
+        uint id=publicMatchesWaitingForAnOpponent[randIdx]; //get the id of the waiting match associated to the idx generated above
 
-        require(activeMatches[id].player2==address(0),"That match is full");
-        require(activeMatches[id].player1!=msg.sender,"You cannot join a match created by yourself!");
+        //the matches in publicMatchesWaitingForAnOpponent will have a blanbk field "player2" by construction!
+        require(activeMatches[id].player1!=msg.sender,"You cannot join a match created by yourself, try again!");
+        //it may happen that player1 creates a public match, then he decides to join another game but the "random" procedure
+        //provides the id of the same match he has created.
         
         activeMatches[id].player2=msg.sender; //add the second player
-        delete matchesWaitingForAnOpponent[uintArrayFind(matchesWaitingForAnOpponent,id)]; //we remove from the array of waiting matches the one we have just composed.
-
+        uint idToDelete=uintArrayFind(publicMatchesWaitingForAnOpponent,id); //index in the array of the completed match
+        popByIndex(publicMatchesWaitingForAnOpponent,idToDelete); //this match is no more in waiting status
+    
         emit secondPlayerJoined(msg.sender, id);
     }
 
@@ -155,6 +209,26 @@ contract MastermindGame {
             }
         }
         revert("Value not found in the array!");
+    }
 
+    /**
+     * @notice Pure function that checks the presence of a given uint in an array of uints. It returns
+     * true if there is an occurrence, false otherwise.
+     * @param array base array on which we carry out the search.
+     * @param target value to find.
+     */
+    function uintArrayContains(uint[] memory array, uint target) private pure returns (bool){
+        for(uint i=0; i<array.length;i++){
+            if(array[i]==target){
+                return true;
+            }
+        }
+        return false;
+    }
+
+    function popByIndex(uint[] storage array, uint target) private {
+     require(target<array.length,"Array index out of bound!");
+     array[target]=array[array.length-1];
+     array.pop();
     }
 }
