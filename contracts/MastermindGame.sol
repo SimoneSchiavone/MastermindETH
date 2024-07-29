@@ -50,6 +50,7 @@ contract MastermindGame {
         gameManager=msg.sender;
     }
     
+    //---MATCHMAKING PHASE---
     /**
      * @notice Function invoked in order to create a new game (the unique actual participant 
      * is the creator of the game)
@@ -70,7 +71,6 @@ contract MastermindGame {
         
         return (nextMatchId-1);
     }
-
 
     function getActiveMatches() public view{
         console.log("ACTIVE GAMES\n");
