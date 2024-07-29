@@ -49,11 +49,19 @@ describe("Game Contract", function(){
     })
 
     describe("New match creation",function(){
-        //Check that the new match is created with the proper gameId
+        //Checks that the new match is created with the proper gameId
         it("Match has to be created with the proper gameId", async function () {
             const {owner, MastermindGame}=await loadFixture(deployFixture);
             expect(await MastermindGame.createGame()).to.emit(MastermindGame, "newGameCreated").withArgs(owner.address,0);
             expect(await MastermindGame.createGame()).to.emit(MastermindGame, "newGameCreated").withArgs(owner.address,1);
+        })
+
+        //Checks that the new match is created with the proper creator address and "joiner" address
+        it("Match has to be created with the proper creator address", async function () {
+            const {owner, MastermindGame}=await loadFixture(deployFixture);
+            await MastermindGame.createGame();
+            expect(await MastermindGame.getMatchCreator(0)).to.equal(owner.address);
+            expect(MastermindGame.getMatchJoiner(0)).to.be.revertedWith("This game is waiting for an opponent!");
         })
     })
     //Aggiungi controllo sul proprietario corretto

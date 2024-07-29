@@ -14,12 +14,11 @@ contract MastermindGame {
     address public gameManager;
 
     //---GAME PARAMETERS---
-    uint public availableColors; 
-    //number of colors usable in the code
-    uint public codeSize; 
-    //size of the code
-    uint public noGuessedReward; 
-    //extra reward for the code maker if the code breaker was not able to guess the code.
+    uint public availableColors; //number of colors usable in the code
+    uint public codeSize; //size of the code
+    uint public noGuessedReward;  //extra reward for the code maker if the code breaker is not able to guess the code.
+    uint public numberTurns=4;
+    uint public numberGuesses=3;
 
     //---MATCH MANAGEMENT---
     //Matches struct contains the addresses of the 2 players
@@ -28,6 +27,8 @@ contract MastermindGame {
         address player2;
     }
     mapping(uint => Match) public activeMatches; //maps an active matchId to the players addresses
+    uint[] matchesWaitingForAnOpponent; //list of the matchesIDs of matches waiting the secondo player
+
     uint activeMatchesNum=0; //counts active matches
     uint private nextMatchId=0; //matchId generation
 
@@ -59,15 +60,17 @@ contract MastermindGame {
         newGame.player1=msg.sender;
         newGame.player2=address(0);
         
-        activeMatches[nextMatchId]=newGame; //vedere come si aggiunge al mapping
+        activeMatches[nextMatchId]=newGame;
+        matchesWaitingForAnOpponent.push(nextMatchId);
+
+        emit newGameCreated(newGame.player1,(nextMatchId));
+        
         nextMatchId++; //counter for the next new matchId
         activeMatchesNum++; //counter for the current active matches
-
-        emit newGameCreated(newGame.player1,(nextMatchId-1));
-        console.log("MSG SENDER %s\n",msg.sender);
-        console.log("Inserted new game: with id %s and value %s and %s",nextMatchId-1, activeMatches[nextMatchId-1].player1, activeMatches[nextMatchId-1].player2);
+        
         return (nextMatchId-1);
     }
+
 
     function getActiveMatches() public view{
         console.log("ACTIVE GAMES\n");
@@ -76,14 +79,24 @@ contract MastermindGame {
         }
     }
 
-    function getMatchCreator(uint gameId) public returns (address){
-        require(activeMatches[gameId].player1!=address(0),"No active games with that Id!");
-        return activeMatches[gameId].player1;
+    /**
+     * @notice Function return the address of the creator of the match whose id is "id". It fails if
+     * the give id is not related to any active match.
+     * @param id id of the match whe are looking for
+     */
+    function getMatchCreator(uint id) public view returns (address){
+        require(activeMatches[id].player1!=address(0),"No active games with that Id!");
+        return activeMatches[id].player1;
     }
 
-    function getMatchJoiner(uint gameId) public returns (address){
-        require(activeMatches[gameId].player1!=address(0),"No active games with that Id!");
-        require(activeMatches[gameId].player2!=address(0),"This game is waiting for an opponent!");
-        return activeMatches[gameId].player2;
+    /**
+     * @notice Function return the address of the second player of the match whose id is "id". It fails if
+     * the give id is not related to any active match or if that match is still waiting for an opponent.
+     * @param id id of the match whe are looking for
+     */
+    function getMatchJoiner(uint id) public view returns (address){
+        require(activeMatches[id].player1!=address(0),"No active games with that Id!");
+        require(activeMatches[id].player2!=address(0),"This game is waiting for an opponent!");
+        return activeMatches[id].player2;
     }
 }
