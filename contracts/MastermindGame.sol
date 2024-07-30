@@ -3,6 +3,7 @@ pragma solidity ^0.8.24;
 
 // Uncomment this line to use console.log
 import "hardhat/console.sol";
+import "./Utils.sol";
 
 /**
  * @title Mastermind Game Contract
@@ -12,6 +13,7 @@ import "hardhat/console.sol";
  */
 contract MastermindGame {
     address public gameManager;
+    Utils utils;
 
     //---GAME PARAMETERS---
     uint public availableColors; //number of colors usable in the code
@@ -53,6 +55,8 @@ contract MastermindGame {
         codeSize=_codeSize;
         noGuessedReward=_noGuessedReward;
         gameManager=msg.sender;
+
+        utils=new Utils();
     }
     
     //---MATCHMAKING PHASE---
@@ -136,13 +140,13 @@ contract MastermindGame {
         require(activeMatches[id].player1!=msg.sender,"You cannot join a match created by yourself!");
 
         if(activeMatches[id].player2!=address(0)){ //second address not "null"
-            if(uintArrayContains(privateMatchesWaitingForAnOpponent,id)){ //second address specified but user not arealdy joined
+            if(utils.uintArrayContains(privateMatchesWaitingForAnOpponent,id)){ //second address specified but user not arealdy joined
                 //check that I'm the authorized opponent
                 require(activeMatches[id].player2==msg.sender,"You are not authorized to join this match!");
 
                 activeMatches[id].player2=msg.sender; //add the second player
 
-                uint idToDelete=uintArrayFind(privateMatchesWaitingForAnOpponent,id); //index in the array of the completed match
+                uint idToDelete=utils.uintArrayFind(privateMatchesWaitingForAnOpponent,id); //index in the array of the completed match
                 popByIndex(privateMatchesWaitingForAnOpponent,idToDelete); //this match is no more in waiting status
 
                 emit secondPlayerJoined(msg.sender, id);
@@ -152,7 +156,7 @@ contract MastermindGame {
         }else{ //blank second address means that everyone can join this game
                 activeMatches[id].player2=msg.sender; //add the second player
 
-                uint idToDelete=uintArrayFind(publicMatchesWaitingForAnOpponent,id); //index in the array of the completed match
+                uint idToDelete=utils.uintArrayFind(publicMatchesWaitingForAnOpponent,id); //index in the array of the completed match
                 popByIndex(publicMatchesWaitingForAnOpponent,idToDelete); //this match is no more in waiting status
 
                 emit secondPlayerJoined(msg.sender, id);
@@ -166,7 +170,7 @@ contract MastermindGame {
     function joinMatch() public{
         require(publicMatchesWaitingForAnOpponent.length>0,"Currently no matches are available, try to create a new one!");
 
-        uint randIdx=randNo(publicMatchesWaitingForAnOpponent.length); //generate a number in [0, current number of available matches]
+        uint randIdx=utils.randNo(publicMatchesWaitingForAnOpponent.length); //generate a number in [0, current number of available matches]
         uint id=publicMatchesWaitingForAnOpponent[randIdx]; //get the id of the waiting match associated to the idx generated above
 
         //the matches in publicMatchesWaitingForAnOpponent will have a blanbk field "player2" by construction!
@@ -175,57 +179,20 @@ contract MastermindGame {
         //provides the id of the same match he has created.
         
         activeMatches[id].player2=msg.sender; //add the second player
-        uint idToDelete=uintArrayFind(publicMatchesWaitingForAnOpponent,id); //index in the array of the completed match
+        uint idToDelete=utils.uintArrayFind(publicMatchesWaitingForAnOpponent,id); //index in the array of the completed match
         popByIndex(publicMatchesWaitingForAnOpponent,idToDelete); //this match is no more in waiting status
     
         emit secondPlayerJoined(msg.sender, id);
     }
 
     /**
-     * @notice The functions return a pseudo-random number lower than mod
-     * @param mod int used in the % operation to get a number lower than mod
+     * @notice This function removes the element in position "target" from
+     * the uint array. Since it's used to remove elements from uint arrays stored
+     * in this contract (ex privateMatches), this function should be contained in this 
+     * contract in order to manipulate these arrays.
+     * @param array array from which we have to remove the element
+     * @param target index of the element to remove
      */
-    function randNo(uint mod) private view returns (uint){
-        bytes32 bhash= blockhash(block.number-1);
-        bytes memory bytesArray = new bytes(32);
-        for(uint i; i<32; i++){
-            bytesArray[i]=bhash[i];
-        }
-        bytes32 rand=keccak256(bytesArray);
-        uint out=uint(rand)%mod;
-        return out;
-    }
-
-    /**
-     * @notice Pure function that finds a given uint in an array of uints. It returns the
-     * index in the array of the occurrence if present, otherwise it revets the execution.
-     * @param array base array on which we carry out the search.
-     * @param target value to find.
-     */
-    function uintArrayFind(uint[] memory array, uint target) private pure returns (uint){
-        for(uint i=0; i<array.length;i++){
-            if(array[i]==target){
-                return i;
-            }
-        }
-        revert("Value not found in the array!");
-    }
-
-    /**
-     * @notice Pure function that checks the presence of a given uint in an array of uints. It returns
-     * true if there is an occurrence, false otherwise.
-     * @param array base array on which we carry out the search.
-     * @param target value to find.
-     */
-    function uintArrayContains(uint[] memory array, uint target) private pure returns (bool){
-        for(uint i=0; i<array.length;i++){
-            if(array[i]==target){
-                return true;
-            }
-        }
-        return false;
-    }
-
     function popByIndex(uint[] storage array, uint target) private {
      require(target<array.length,"Array index out of bound!");
      array[target]=array[array.length-1];
