@@ -18,17 +18,23 @@ describe("Game Contract", function(){
 
     async function deployAndMatchCreateFixture() {
         const {owner, MastermindGame}=await loadFixture(onlyDeployFixture);
-        expect(await MastermindGame.createMatch());
+        await MastermindGame.createMatch();
         return { owner, MastermindGame};
     }
 
     async function deployAndPrivateMatchCreateFixture() {
         const {owner, MastermindGame}=await loadFixture(onlyDeployFixture);
         const [own, addr1]= await ethers.getSigners();
-        expect(await MastermindGame.createPrivateMatch(addr1));
+        await MastermindGame.createPrivateMatch(addr1);
         return { owner, MastermindGame};
     }
 
+    async function deployMatchCreateMatchJoinFixture() {
+        const {owner, MastermindGame}=await loadFixture(deployAndMatchCreateFixture);
+        const [own, addr1]= await ethers.getSigners();
+        await MastermindGame.connect(addr1).joinMatchWithId(0);
+        return { owner, MastermindGame};
+    }
     describe("Contract creation", function(){
         //Check that the assignment of the value is correct in case of right parameters
         it("Constructor should initialize the game parameters", async function () {
@@ -177,9 +183,95 @@ describe("Game Contract", function(){
                 //check right address assignments
                 expect(await MastermindGame.getMatchCreator(0)).to.equal(owner.address);
                 expect(await MastermindGame.getSecondPlayer(0)).to.equal(addr1.address);
-
             })
         })
+    })
+
+    describe("Match stake negotiation & deposit", function(){
+        describe("Setting the stake value agreed",async function(){
+            it("Should fail if called by someone not match creator", async function () {
+                const {owner, MastermindGame}=await loadFixture(deployAndMatchCreateFixture);
+            
+                const [own, addr1]= await ethers.getSigners();
+                //Match id will be 0 for the fist one created
+                await expect(MastermindGame.connect(addr1).setStakeValue(0,50)).to.revertedWith("Only the creator of that match can perform this operation!");
+            })
+            it("Should fail if the match stake is <=0", async function () {
+                const {owner, MastermindGame}=await loadFixture(deployAndMatchCreateFixture);
+            
+                //Match id will be 0 for the fist one created
+                await expect(MastermindGame.setStakeValue(0,0)).to.be.revertedWith("The match stake has to be greater than zero!");                
+            })
+            it("Should fail if called more than once", async function () {
+                const {owner, MastermindGame}=await loadFixture(deployAndMatchCreateFixture);
+            
+                //Match id will be 0 for the fist one created
+                expect(await MastermindGame.setStakeValue(0,5)).not.to.be.reverted;
+                await expect(MastermindGame.setStakeValue(0,5)).to.be.revertedWith("The amount to put in stake has already been fixed by the match creator!");
+            })
+            it("Corretly sets the match stake",async function () {
+                const {owner, MastermindGame}=await loadFixture(deployAndMatchCreateFixture);
+
+                expect(await MastermindGame.setStakeValue(0,5)).to.emit(MastermindGame,"matchStakeFixed").withArgs(0,5);
+            })
+        })
+        describe("Send the wei used as match stake",function(){
+            it("Fails if no wei is sent", async function(){
+                const {owner, MastermindGame}=await loadFixture(deployAndMatchCreateFixture);
+
+                await expect(MastermindGame.depositStake(0)).to.revertedWith("The match stake has to be greater than zero!");
+            })
+            it("Fails if called by someone not participating in that game", async function () {
+                const {owner, MastermindGame}=await loadFixture(deployMatchCreateMatchJoinFixture);
+                const [own, addr1,addr2]= await ethers.getSigners();
+                
+                //Addr2 is not a member of that game
+                await expect(MastermindGame.connect(addr2).depositStake(0, {value: 1})).to.revertedWith("You are not participating to this match!");
+            })
+            it("Fails if the amount sent differs from the one agreed by the players.", async function () {
+                const {owner, MastermindGame}=await loadFixture(deployAndMatchCreateFixture);
+                await MastermindGame.setStakeValue(0,5);
+                //agreed 5 sent 1
+                await expect(MastermindGame.depositStake(0, {value: 1})).to.revertedWith("You have sent an incorrect amout of WEI for this game");
+            })
+            it("Fails in case of multiple payments from the same user",async function () {
+                const {owner, MastermindGame}=await loadFixture(deployAndMatchCreateFixture);
+                const [own, addr1]=await ethers.getSigners();
+                
+                //The creators sets the agreed amount to send
+                await MastermindGame.setStakeValue(0,5);
+                //Creators sends its funds
+                await expect(MastermindGame.depositStake(0, {value: 5})).not.to.be.reverted;
+                //Player sends its funds
+                await expect(MastermindGame.depositStake(0, {value: 5})).to.be.revertedWith("You have already sent the wei in stake for this match!");
+            })
+            it("Properly manages the payments from the players",async function () {
+                const {owner, MastermindGame}=await loadFixture(deployMatchCreateMatchJoinFixture);
+                const [own, addr1]=await ethers.getSigners();
+                
+                //The creators sets the agreed amount to send
+                await MastermindGame.setStakeValue(0,5);
+                //Creators sends its funds
+                await expect(MastermindGame.depositStake(0, {value: 5})).to.changeEtherBalance(MastermindGame,5);
+                //Player sends its funds
+                await expect(MastermindGame.connect(addr1).depositStake(0, {value: 5})).to.emit(MastermindGame,"matchStakeDeposited").withArgs(0);
+            })
+        })
+        
+        /*
+        it("", async function () {
+            const {owner, MastermindGame}=await loadFixture(deployAndMatchCreateFixture);
+            
+            const [own, addr1]= await ethers.getSigners();
+            //second player joins with success
+            expect(await MastermindGame.connect(addr1).joinMatch()).to.emit(MastermindGame,"secondPlayerJoined").withArgs(addr1.address,0);
+                
+            //check right address assignments
+            expect(await MastermindGame.getMatchCreator(0)).to.equal(owner.address);
+            expect(await MastermindGame.getSecondPlayer(0)).to.equal(addr1.address);
+
+        })
+        */
     })
 })
   
