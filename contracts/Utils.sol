@@ -6,7 +6,7 @@ pragma solidity ^0.8.24;
  * @author Simone Schiavone <s.schiavone3@studenti.unipi.it>
  * @notice 
  */
-contract Utils{
+library Utils{
     /**
      * @notice The functions return a pseudo-random number lower than mod
      * @param mod int used in the % operation to get a number lower than mod
