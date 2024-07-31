@@ -18,7 +18,7 @@ contract MastermindGame {
     uint8 public availableColors; //number of colors usable in the code
     uint8 public codeSize; //size of the code
     uint public noGuessedReward;  //extra reward for the code maker if the code breaker is not able to guess the code.
-    uint8 constant numberTurns=4;
+    uint8 constant NUMBER_TURNS=4;
     uint8 constant numberGuesses=5;
 
     //---MATCH MANAGEMENT---
@@ -79,42 +79,7 @@ contract MastermindGame {
         noGuessedReward=_noGuessedReward;
         gameManager=msg.sender;
     }
-    
-    function initializeTurn(uint matchId, uint8 turnNo) private{
-        require(turnNo<numberTurns,"Number of turns bound exceeded!");
-        //no further checks on matchId since this function is invoked from other "safe" functions
-        Match storage m=activeMatches[matchId]; 
-        
-        address _codeMaker;
-        //codeMaker selection
-        if(turnNo==0){ //first turn
-            if(uint8(Utils.randNo(2))==0){
-                _codeMaker=m.player1;
-            }else{
-                _codeMaker=m.player2;
-            }
-        }else{
-            //swap the roles
-            if(m.turns[turnNo-1].codeMaker==m.player2){
-                _codeMaker=m.player1;
-            }else{
-                _codeMaker=m.player2;
-            }
-        }
-        
-        uint[] memory whatever; //empty array
-        string[] memory _whatever;
-        Turn memory t= Turn({turnNo: turnNo,codeMaker: _codeMaker, codeHash: 0, codeProposals:_whatever, correctColor: whatever,correctColorAndPosition: whatever});
 
-        m.turns.push(t);
-        //Turn creation
-        
-        console.log("DEBUG\n:");
-        console.log("Siamo nella struct Match con giocatori %s vs %vs\n",m.player1, m.player2);
-        console.log("Dimensione array turni %d\n",m.turns.length);
-        //console.log("Turno %d: codeMaker %s codeHash %d codeprop % correctCol %d",t.turnNo, t.codeMaker, t.codeProposals.length, t.correctColor.length);
-    }
-    
     //---MATCHMAKING PHASE---
     /**
      * @notice Function invoked in order to create a new game without setting
@@ -122,7 +87,7 @@ contract MastermindGame {
      */ 
     function createMatch() public returns (uint matchId) {
         //Initialize a new match
-        Match memory newMatch;
+        Match storage newMatch=activeMatches[nextMatchId];
         newMatch.player1=msg.sender;
         newMatch.player2=address(0);
 
@@ -130,7 +95,7 @@ contract MastermindGame {
         newMatch.deposit1=false;
         newMatch.deposit2=false;
 
-        activeMatches[nextMatchId]=newMatch;
+        //activeMatches[nextMatchId]=newMatch;
         publicMatchesWaitingForAnOpponent.push(nextMatchId);
 
         emit newMatchCreated(newMatch.player1,(nextMatchId));
@@ -150,11 +115,11 @@ contract MastermindGame {
         require(opponent!=msg.sender,"You can't be both creator of the match and second player!");
 
         //Initialize a new match
-        Match memory newMatch;
+        Match storage newMatch=activeMatches[nextMatchId];
         newMatch.player1=msg.sender;
         newMatch.player2=opponent;
-        
-        activeMatches[nextMatchId]=newMatch;
+
+        //activeMatches[nextMatchId]=newMatch;
         privateMatchesWaitingForAnOpponent.push(nextMatchId);
 
         emit newMatchCreated(newMatch.player1,(nextMatchId));
@@ -288,10 +253,10 @@ contract MastermindGame {
             }
         }
         
-        
-        //If both players have put in stake the right amount of wei the match can start so emit an event
         emit matchStakeDeposited(matchId);
-        //initializeTheMatch(matchId); SCOMMENTARE e CAMBIARE VISIBILITA'!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+        //If both players have put in stake the right amount of wei the match can start so emit an event
+        if(m.deposit1&&m.deposit2)
+            initializeTurn(matchId,0); //SCOMMENTARE e CAMBIARE VISIBILITA'!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     }
 
     /**
@@ -321,14 +286,46 @@ contract MastermindGame {
         dropTheMatch(matchId);
     }
     
-    //---MATCH INITIALIZATION---
+    //---TURN INITIALIZATION---
     /**
      * @notice Match creation automatically invoked whenever the contract receives
      * the stake payment from both the game participant.
      * @param matchId id of the match to initialize
      */
-    
+    function initializeTurn(uint matchId, uint8 turnNo) private{
+        require(turnNo<NUMBER_TURNS,"Number of turns bound exceeded!");
+        //no further checks on matchId since this function is invoked from other "safe" functions
+        Match storage m=activeMatches[matchId]; 
+        
+        address _codeMaker;
+        //codeMaker selection
+        if(turnNo==0){ //first turn
+            if(uint8(Utils.randNo(2))==0){
+                _codeMaker=m.player1;
+            }else{
+                _codeMaker=m.player2;
+            }
+        }else{
+            //swap the roles
+            if(m.turns[turnNo-1].codeMaker==m.player2){
+                _codeMaker=m.player1;
+            }else{
+                _codeMaker=m.player2;
+            }
+        }
+        
+        //New turn creation and insertion in the associated match
+        uint[] memory whatever; //empty array
+        string[] memory _whatever;
+        Turn memory t= Turn({turnNo: turnNo,codeMaker: _codeMaker, codeHash: 0,codeProposals: _whatever,correctColorAndPosition: whatever,correctColor: whatever});
+        m.turns.push(t);
+        
+        //Notifies the completion of this phase and request the codeMaker to start this turn
+        emit newTurnStarted(matchId, turnNo, t.codeMaker);
+    }
 
+    //---TURN ACTIONS---
+    //public publishCodeHash(
     /**
      * @notice This function removes the element in position "target" from
      * the uint array. Since it's used to remove elements from uint arrays stored
