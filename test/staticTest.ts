@@ -3,6 +3,7 @@ import {time, loadFixture} from "@nomicfoundation/hardhat-toolbox/network-helper
 import hre, { ethers } from "hardhat";
 
 describe("Game Contract", function(){
+    const FIVE_MINUTES_IN_SECONDS=300;
     const colors=4; 
     const codesize=10;
     const reward=5;
@@ -29,12 +30,23 @@ describe("Game Contract", function(){
         return { owner, MastermindGame};
     }
 
-    async function deployMatchCreateMatchJoinFixture() {
+    async function deployCreateMatchJoinMatchFixture() {
         const {owner, MastermindGame}=await loadFixture(deployAndMatchCreateFixture);
         const [own, addr1]= await ethers.getSigners();
         await MastermindGame.connect(addr1).joinMatchWithId(0);
         return { owner, MastermindGame};
     }
+
+    
+    async function deployCreateJoinDepositFixture() {
+        const {owner, MastermindGame}=await loadFixture(deployAndMatchCreateFixture);
+        const [own, addr1]= await ethers.getSigners();
+        await MastermindGame.connect(addr1).joinMatchWithId(0);
+        await MastermindGame.setStakeValue(0,5);
+        await MastermindGame.depositStake(0, {value: 5});;
+        return { owner, MastermindGame};
+    }
+
     describe("Contract creation", function(){
         //Check that the assignment of the value is correct in case of right parameters
         it("Constructor should initialize the game parameters", async function () {
@@ -188,7 +200,7 @@ describe("Game Contract", function(){
     })
 
     describe("Match stake negotiation & deposit", function(){
-        describe("Setting the stake value agreed",async function(){
+        describe("Set the stake value agreed",async function(){
             it("Should fail if called by someone not match creator", async function () {
                 const {owner, MastermindGame}=await loadFixture(deployAndMatchCreateFixture);
             
@@ -222,7 +234,7 @@ describe("Game Contract", function(){
                 await expect(MastermindGame.depositStake(0)).to.revertedWith("The match stake has to be greater than zero!");
             })
             it("Fails if called by someone not participating in that game", async function () {
-                const {owner, MastermindGame}=await loadFixture(deployMatchCreateMatchJoinFixture);
+                const {owner, MastermindGame}=await loadFixture(deployCreateMatchJoinMatchFixture);
                 const [own, addr1,addr2]= await ethers.getSigners();
                 
                 //Addr2 is not a member of that game
@@ -246,7 +258,7 @@ describe("Game Contract", function(){
                 await expect(MastermindGame.depositStake(0, {value: 5})).to.be.revertedWith("You have already sent the wei in stake for this match!");
             })
             it("Properly manages the payments from the players",async function () {
-                const {owner, MastermindGame}=await loadFixture(deployMatchCreateMatchJoinFixture);
+                const {owner, MastermindGame}=await loadFixture(deployCreateMatchJoinMatchFixture);
                 const [own, addr1]=await ethers.getSigners();
                 
                 //The creators sets the agreed amount to send
@@ -257,21 +269,43 @@ describe("Game Contract", function(){
                 await expect(MastermindGame.connect(addr1).depositStake(0, {value: 5})).to.emit(MastermindGame,"matchStakeDeposited").withArgs(0);
             })
         })
-        
-        /*
-        it("", async function () {
-            const {owner, MastermindGame}=await loadFixture(deployAndMatchCreateFixture);
-            
-            const [own, addr1]= await ethers.getSigners();
-            //second player joins with success
-            expect(await MastermindGame.connect(addr1).joinMatch()).to.emit(MastermindGame,"secondPlayerJoined").withArgs(addr1.address,0);
+        describe("Allow to request the refund of the stake payed in case one of the player doesn't pay within the deadline", async function () {
+            it("Fails if called by someone not participating in that game", async function () {
+                const {owner, MastermindGame}=await loadFixture(deployCreateJoinDepositFixture);
+                const [own, addr1,addr2]= await ethers.getSigners();
                 
-            //check right address assignments
-            expect(await MastermindGame.getMatchCreator(0)).to.equal(owner.address);
-            expect(await MastermindGame.getSecondPlayer(0)).to.equal(addr1.address);
-
+                //Addr2 is not a member of that game
+                await expect(MastermindGame.connect(addr2).requestRefundMatchStake(0)).to.revertedWith("You are not participating to this match!");
+            })
+            it("Fails if a wrong matchId is passed", async function () {
+                const {owner, MastermindGame}=await loadFixture(deployCreateJoinDepositFixture);
+                const [own, addr1,addr2]= await ethers.getSigners();
+                
+                //Addr2 is not a member of that game
+                await expect(MastermindGame.connect(addr2).requestRefundMatchStake(55)).to.revertedWith("You are not participating to this match!");
+            })
+            it("Fails if both players have already paid", async function () {
+                const {owner, MastermindGame}=await loadFixture(deployCreateJoinDepositFixture);
+                const [own, addr1]= await ethers.getSigners();
+                
+                //Addr 1 paid the stake
+                await expect(MastermindGame.connect(addr1).depositStake(0,{value: 5})).not.to.be.reverted;
+                await expect(MastermindGame.requestRefundMatchStake(0)).to.revertedWith("Both players have put their funds in stake!");
+            })
+            it("Fails if requested before the deadline", async function () {
+                const {owner, MastermindGame}=await loadFixture(deployCreateJoinDepositFixture);
+                const [own, addr1]= await ethers.getSigners();
+                //Addr 1 did not pay the stake, owner request the refund before the 5 minutes deadline
+                await expect(MastermindGame.requestRefundMatchStake(0)).to.revertedWith("You cannot request the refund until the deadline for the payments is expired!");
+            })
+            it("Properly do the refund when the pre-requisites are met", async function () {
+                const {owner, MastermindGame}=await loadFixture(deployCreateJoinDepositFixture);
+                const [own, addr1]= await ethers.getSigners();
+                //Addr 1 did not pay the stake, owner request the refund after the 5 minutes deadline
+                await time.increase(FIVE_MINUTES_IN_SECONDS+2);            
+                await expect(MastermindGame.requestRefundMatchStake(0)).to.changeEtherBalance(owner,5);
+            })
         })
-        */
     })
 })
   

@@ -267,7 +267,7 @@ contract MastermindGame {
         }
 
         //Check if the deadline for the payments of the stake amount is already expired
-        require((m.timestampStakePaymentsOpening+STAKEPAYMENTDEADLINE)>block.timestamp,"You cannot request the refund until the deadline for the payments is expired!");
+        require(block.timestamp>=(m.timestampStakePaymentsOpening+STAKEPAYMENTDEADLINE),"You cannot request the refund until the deadline for the payments is expired!");
 
         (bool success,) = msg.sender.call{value: m.stake}("");
         require(success,"Refund payment failed!");
