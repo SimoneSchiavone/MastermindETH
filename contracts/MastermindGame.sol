@@ -13,14 +13,13 @@ import "./Utils.sol";
  */
 contract MastermindGame {
     address public gameManager;
-    Utils utils;
 
     //---GAME PARAMETERS---
-    uint public availableColors; //number of colors usable in the code
-    uint public codeSize; //size of the code
+    uint8 public availableColors; //number of colors usable in the code
+    uint8 public codeSize; //size of the code
     uint public noGuessedReward;  //extra reward for the code maker if the code breaker is not able to guess the code.
-    uint public numberTurns=4;
-    uint public numberGuesses=3;
+    uint8 constant numberTurns=4;
+    uint8 constant numberGuesses=5;
 
     //---MATCH MANAGEMENT---
     //Matches struct contains the addresses of the 2 players
@@ -32,6 +31,18 @@ contract MastermindGame {
         uint timestampStakePaymentsOpening; //timestamp of when the stake amount is fixed by the creator
         bool deposit1; //indicates that player1 has payed the stake amount
         bool deposit2; //indicates that player2 has payed the stake amount
+
+        Turn[] turns;
+    }
+
+    struct Turn{
+        uint8 turnNo; //progressive number of this turn in the match
+        uint codeHash;
+        address codeMaker; //store the index of the player who has the role of codemaker ex. 1 stands for player1
+
+        string[] codeProposals; //code proposed by the code breaker at each attempt (max numberGuesses)
+        uint[] correctColorAndPosition; //reply of the codeMaker regarding a full match which is a color&position match
+        uint[] correctColor; //replay of the codeMaker regarding a partial match which means color ok but wrong position
     }
 
     mapping(uint => Match) public activeMatches; //maps an active matchId to the players addresses
@@ -52,13 +63,14 @@ contract MastermindGame {
     event matchStakeFixed(uint matchId, uint amount); //the event notifies that an agreement between the 2 player has been reached and it shows the amount to pay
     event matchStakeDeposited(uint matchId); //the event notifies that both player have deposited the match stake for that match
     event matchDeleted(uint matchId); //the event notifies the deletion of that match from the active ones
+    event newTurnStarted(uint matchId, uint turnNum, address codeMaker); //the event notifies that a new turn of a match ir ready to be played and it speficies the address of the codemaker;
     /**
      * @notice Constructor function of the contract
      * @param _availableColors number of colors usable in the code
      * @param _codeSize code size
      * @param _noGuessedReward extra reward for the code maker
      */
-    constructor(uint _availableColors, uint _codeSize, uint _noGuessedReward){
+    constructor(uint8 _availableColors, uint8 _codeSize, uint _noGuessedReward){
         require(_availableColors>1,"The number of available colors should be greater than 1!");
         require(_codeSize>1,"The code size should be greater than 1!");
         require(_noGuessedReward>0, "The extra reward for the code maker has to be greater than 0!");
@@ -66,8 +78,41 @@ contract MastermindGame {
         codeSize=_codeSize;
         noGuessedReward=_noGuessedReward;
         gameManager=msg.sender;
+    }
+    
+    function initializeTurn(uint matchId, uint8 turnNo) private{
+        require(turnNo<numberTurns,"Number of turns bound exceeded!");
+        //no further checks on matchId since this function is invoked from other "safe" functions
+        Match storage m=activeMatches[matchId]; 
+        
+        address _codeMaker;
+        //codeMaker selection
+        if(turnNo==0){ //first turn
+            if(uint8(Utils.randNo(2))==0){
+                _codeMaker=m.player1;
+            }else{
+                _codeMaker=m.player2;
+            }
+        }else{
+            //swap the roles
+            if(m.turns[turnNo-1].codeMaker==m.player2){
+                _codeMaker=m.player1;
+            }else{
+                _codeMaker=m.player2;
+            }
+        }
+        
+        uint[] memory whatever; //empty array
+        string[] memory _whatever;
+        Turn memory t= Turn({turnNo: turnNo,codeMaker: _codeMaker, codeHash: 0, codeProposals:_whatever, correctColor: whatever,correctColorAndPosition: whatever});
 
-        utils=new Utils();
+        m.turns.push(t);
+        //Turn creation
+        
+        console.log("DEBUG\n:");
+        console.log("Siamo nella struct Match con giocatori %s vs %vs\n",m.player1, m.player2);
+        console.log("Dimensione array turni %d\n",m.turns.length);
+        //console.log("Turno %d: codeMaker %s codeHash %d codeprop % correctCol %d",t.turnNo, t.codeMaker, t.codeProposals.length, t.correctColor.length);
     }
     
     //---MATCHMAKING PHASE---
@@ -155,13 +200,13 @@ contract MastermindGame {
         require(activeMatches[id].player1!=msg.sender,"You cannot join a match created by yourself!");
         Match storage m=activeMatches[id];
         if(m.player2!=address(0)){ //second address not "null"
-            if(utils.uintArrayContains(privateMatchesWaitingForAnOpponent,id)){ //second address specified but user not arealdy joined
+            if(Utils.uintArrayContains(privateMatchesWaitingForAnOpponent,id)){ //second address specified but user not arealdy joined
                 //check that I'm the authorized opponent
                 require(m.player2==msg.sender,"You are not authorized to join this match!");
 
                 m.player2=msg.sender; //add the second player
 
-                uint idToDelete=utils.uintArrayFind(privateMatchesWaitingForAnOpponent,id); //index in the array of the completed match
+                uint idToDelete=Utils.uintArrayFind(privateMatchesWaitingForAnOpponent,id); //index in the array of the completed match
                 popByIndex(privateMatchesWaitingForAnOpponent,idToDelete); //this match is no more in waiting status
 
                 emit secondPlayerJoined(msg.sender, id);
@@ -171,7 +216,7 @@ contract MastermindGame {
         }else{ //blank second address means that everyone can join this game
                 m.player2=msg.sender; //add the second player
 
-                uint idToDelete=utils.uintArrayFind(publicMatchesWaitingForAnOpponent,id); //index in the array of the completed match
+                uint idToDelete=Utils.uintArrayFind(publicMatchesWaitingForAnOpponent,id); //index in the array of the completed match
                 popByIndex(publicMatchesWaitingForAnOpponent,idToDelete); //this match is no more in waiting status
 
                 emit secondPlayerJoined(msg.sender, id);
@@ -185,7 +230,7 @@ contract MastermindGame {
     function joinMatch() public{
         require(publicMatchesWaitingForAnOpponent.length>0,"Currently no matches are available, try to create a new one!");
 
-        uint randIdx=utils.randNo(publicMatchesWaitingForAnOpponent.length); //generate a number in [0, current number of available matches]
+        uint randIdx=Utils.randNo(publicMatchesWaitingForAnOpponent.length); //generate a number in [0, current number of available matches]
         uint id=publicMatchesWaitingForAnOpponent[randIdx]; //get the id of the waiting match associated to the idx generated above
 
         //the matches in publicMatchesWaitingForAnOpponent will have a blanbk field "player2" by construction!
@@ -194,13 +239,13 @@ contract MastermindGame {
         //provides the id of the same match he has created.
         
         activeMatches[id].player2=msg.sender; //add the second player
-        uint idToDelete=utils.uintArrayFind(publicMatchesWaitingForAnOpponent,id); //index in the array of the completed match
+        uint idToDelete=Utils.uintArrayFind(publicMatchesWaitingForAnOpponent,id); //index in the array of the completed match
         popByIndex(publicMatchesWaitingForAnOpponent,idToDelete); //this match is no more in waiting status
     
         emit secondPlayerJoined(msg.sender, id);
     }
 
-    //---GAME STAKE NEGOTIATION PHASE---
+    //---MATCH STAKE NEGOTIATION PHASE---
     /*Here it's assumed that the value put in stake by both user for their match will be decided
     offchain and, whenever they have reached an agreement on that value, the match creator will set
     this parameter of the match. */
@@ -246,6 +291,7 @@ contract MastermindGame {
         
         //If both players have put in stake the right amount of wei the match can start so emit an event
         emit matchStakeDeposited(matchId);
+        //initializeTheMatch(matchId); SCOMMENTARE e CAMBIARE VISIBILITA'!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     }
 
     /**
@@ -274,6 +320,14 @@ contract MastermindGame {
 
         dropTheMatch(matchId);
     }
+    
+    //---MATCH INITIALIZATION---
+    /**
+     * @notice Match creation automatically invoked whenever the contract receives
+     * the stake payment from both the game participant.
+     * @param matchId id of the match to initialize
+     */
+    
 
     /**
      * @notice This function removes the element in position "target" from
