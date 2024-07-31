@@ -1,6 +1,7 @@
 import { expect } from "chai";
 import {time, loadFixture} from "@nomicfoundation/hardhat-toolbox/network-helpers";
 import hre, { ethers } from "hardhat";
+import { string } from "hardhat/internal/core/params/argumentTypes";
 
 describe("Game Contract", function(){
     const FIVE_MINUTES_IN_SECONDS=300;
@@ -10,9 +11,18 @@ describe("Game Contract", function(){
 
     async function onlyDeployFixture() {
         const [owner] =await hre.ethers.getSigners();
-
-        const MastermindGame__factory = await hre.ethers.getContractFactory("MastermindGame");
-        const MastermindGame = await MastermindGame__factory.deploy(colors, codesize, reward);
+        
+        const Lib = await ethers.getContractFactory("Utils");
+        const lib = await Lib.deploy();
+        let add:string=await lib.getAddress();
+        const MastermindGame_factory = await ethers.getContractFactory("MastermindGame", {
+            libraries: {
+                Utils: add,
+            },
+        });
+        
+        
+        const MastermindGame = await MastermindGame_factory.deploy(colors, codesize, reward);
 
         return{ owner, MastermindGame}
     }
@@ -61,22 +71,43 @@ describe("Game Contract", function(){
         it("Constructor should fails with color <=1", async function () {
             const [owner, otherAccount] =await hre.ethers.getSigners();
             
-            const MastermindGame__factory = await hre.ethers.getContractFactory("MastermindGame");
-            await expect(MastermindGame__factory.deploy(0, codesize, reward)).to.be.revertedWith("The number of available colors should be greater than 1!");
+            const Lib = await ethers.getContractFactory("Utils");
+            const lib = await Lib.deploy();
+            let add:string=await lib.getAddress();
+            const MastermindGame_factory = await ethers.getContractFactory("MastermindGame", {
+                libraries: {
+                    Utils: add,
+                },
+            });
+            await expect(MastermindGame_factory.deploy(0, codesize, reward)).to.be.revertedWith("The number of available colors should be greater than 1!");
         })
 
         it("Constructor should fails with code size <=1", async function () {
             const [owner, otherAccount] =await hre.ethers.getSigners();
         
-            const MastermindGame__factory = await hre.ethers.getContractFactory("MastermindGame");
-            await expect(MastermindGame__factory.deploy(colors, 0, reward)).to.be.revertedWith("The code size should be greater than 1!");
+            const Lib = await ethers.getContractFactory("Utils");
+            const lib = await Lib.deploy();
+            let add:string=await lib.getAddress();
+            const MastermindGame_factory = await ethers.getContractFactory("MastermindGame", {
+                libraries: {
+                    Utils: add,
+                },
+            });
+            await expect(MastermindGame_factory.deploy(colors, 0, reward)).to.be.revertedWith("The code size should be greater than 1!");
         })
 
         it("Constructor should fails with reward <=0", async function () {
             const [owner, otherAccount] =await hre.ethers.getSigners();
         
-            const MastermindGame__factory = await hre.ethers.getContractFactory("MastermindGame");
-            await expect(MastermindGame__factory.deploy(colors, codesize, 0)).to.be.revertedWith("The extra reward for the code maker has to be greater than 0!");
+            const Lib = await ethers.getContractFactory("Utils");
+            const lib = await Lib.deploy();
+            let add:string=await lib.getAddress();
+            const MastermindGame_factory = await ethers.getContractFactory("MastermindGame", {
+                libraries: {
+                    Utils: add,
+                },
+            });
+            await expect(MastermindGame_factory.deploy(colors, codesize, 0)).to.be.revertedWith("The extra reward for the code maker has to be greater than 0!");
         })
     })
 
