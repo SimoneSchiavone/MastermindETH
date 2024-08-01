@@ -367,7 +367,7 @@ describe("Game Contract", function(){
         })
     })
     
-    describe("Code hash publication by the codeOwner TODO", function(){
+    describe("Code hash publication by the codeOwner", function(){
         it("Should fail if the code is published by someone not partecipating in the game",async function(){
             const {owner, MastermindGame}=await loadFixture(publicMatchStarted);
             const [own, addr1, addr2]= await ethers.getSigners();
@@ -377,7 +377,7 @@ describe("Game Contract", function(){
             //Turn 0 of match 0
             await expect(MastermindGame.connect(addr2).publishCodeHash(0,0,digest)).to.revertedWith("You are not a participant of this game!");
         })
-        it("Should fail if the code is published by someone not partecipating in the game",async function(){
+        it("Should fail if the match is not started yet",async function(){
             const {owner, MastermindGame}=await loadFixture(publicMatchCreatorDeposited);
             const [own, addr1, addr2]= await ethers.getSigners();
             
@@ -423,6 +423,7 @@ describe("Game Contract", function(){
             
         })
     })
+    
     describe("Guess publication publication by the codeBreaker TODO",function(){
         
     })
