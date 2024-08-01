@@ -6,6 +6,8 @@ pragma solidity ^0.8.24;
  * @author Simone Schiavone <s.schiavone3@studenti.unipi.it>
  * @notice 
  */
+import "hardhat/console.sol";
+
 library Utils{
     /**
      * @notice The functions return a pseudo-random number lower than mod
@@ -50,5 +52,38 @@ library Utils{
             }
         }
         return false;
+    }
+
+    function strcmp(string memory origin, string memory toCheck) external pure returns(bool){
+        return (keccak256(abi.encodePacked((origin))) == keccak256(abi.encodePacked((toCheck))));
+    }
+    function contains (string memory what, string memory where) external pure{
+        /*console.log("Comparo\n");
+          console.log("%s",where);
+          console.log("con");
+          console.log("%s",what);*/
+        bytes memory whatBytes = bytes (what); //what to search
+        bytes memory whereBytes = bytes (where); //where to search
+        /*console.log("Comparo");
+        console.logBytes(whereBytes);
+        console.log("con");
+        console.logBytes(whatBytes);*/
+        bool ok_char=false;
+        for (uint i = 0; i < whereBytes.length; i++) {
+            //console.log("Carattere numero %d di %s",i,where);
+            for (uint j = 0; j < whatBytes.length; j++){
+                if (whereBytes [i] == whatBytes [j]) {
+                    //console.log("CARATTERE TROVATO!");
+                    ok_char = true;
+                    break;
+                }
+            }
+            if(ok_char==true){ //move to the next char in 'where'
+                //console.log("RAMO OK");
+                ok_char=false;
+            }else{
+                revert("The guess contains an invalid color!");
+            }
+        }
     }
 }

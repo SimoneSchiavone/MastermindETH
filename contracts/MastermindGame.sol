@@ -15,11 +15,16 @@ contract MastermindGame {
     address public gameManager;
 
     //---GAME PARAMETERS---
-    uint8 public availableColors; //number of colors usable in the code
+    //Typically in the real game are used 10 colors, here they are Amber, Black, Cyan, Green, Pink, Red, Turquoise, Violet, White, Yellow
+    string public availableColors="ABCGPRTVWY"; //number of colors usable in the code
     uint8 public codeSize; //size of the code
     uint public noGuessedReward;  //extra reward for the code maker if the code breaker is not able to guess the code.
     uint8 constant NUMBER_TURNS=4;
-    uint8 constant numberGuesses=5;
+    uint8 constant NUMBER_GUESSES=5;
+
+    //---DEADLINES---
+    uint public constant STAKEPAYMENTDEADLINE = 300;
+    
 
     //---MATCH MANAGEMENT---
     //Matches struct contains the addresses of the 2 players
@@ -37,7 +42,7 @@ contract MastermindGame {
 
     struct Turn{
         uint8 turnNo; //progressive number of this turn in the match
-        uint codeHash;
+        bytes32 codeHash;
         address codeMaker; //store the index of the player who has the role of codemaker ex. 1 stands for player1
 
         string[] codeProposals; //code proposed by the code breaker at each attempt (max numberGuesses)
@@ -54,8 +59,6 @@ contract MastermindGame {
     uint activeMatchesNum=0; //counts active matches
     uint private nextMatchId=0; //matchId generation
 
-    //---DEADLINES---
-    uint public constant STAKEPAYMENTDEADLINE = 300;
 
     //---EVENTS---
     event newMatchCreated(address creator, uint newMatchId); //event emitted when a new match is created
@@ -64,17 +67,20 @@ contract MastermindGame {
     event matchStakeDeposited(uint matchId); //the event notifies that both player have deposited the match stake for that match
     event matchDeleted(uint matchId); //the event notifies the deletion of that match from the active ones
     event newTurnStarted(uint matchId, uint turnNum, address codeMaker); //the event notifies that a new turn of a match ir ready to be played and it speficies the address of the codemaker;
+    event codeHashPublished(uint matchId, uint turnNum, bytes32 digest); //the event notifies that the codeMaker has published the digest of the code hence the opponent could start to emit guesses;
+    event newGuess(uint matchId, uint turnNum, string guess); //the event notifies that a the codeBreaker of a game has proposed a solution for the code
+
+
     /**
      * @notice Constructor function of the contract
-     * @param _availableColors number of colors usable in the code
      * @param _codeSize code size
      * @param _noGuessedReward extra reward for the code maker
      */
-    constructor(uint8 _availableColors, uint8 _codeSize, uint _noGuessedReward){
-        require(_availableColors>1,"The number of available colors should be greater than 1!");
+    constructor( uint8 _codeSize, uint _noGuessedReward){
+        //require(_availableColors.length==10,"The number of available colors should be 10!");
         require(_codeSize>1,"The code size should be greater than 1!");
         require(_noGuessedReward>0, "The extra reward for the code maker has to be greater than 0!");
-        availableColors=_availableColors;
+        //availableColors=_availableColors;
         codeSize=_codeSize;
         noGuessedReward=_noGuessedReward;
         gameManager=msg.sender;
@@ -111,7 +117,7 @@ contract MastermindGame {
      * the address of the opponent.
      */ 
     function createPrivateMatch(address opponent) public returns (uint matchId) {
-        require(opponent!=address(0),"Invalid address");
+        require(opponent!=address(0),"Invalid address!");
         require(opponent!=msg.sender,"You can't be both creator of the match and second player!");
 
         //Initialize a new match
@@ -136,7 +142,7 @@ contract MastermindGame {
      * @param id id of the match whe are looking for
      */
     function getMatchCreator(uint id) public view returns (address){
-        require(activeMatches[id].player1!=address(0),"No active games with that Id!");
+        require(activeMatches[id].player1!=address(0),"There is no match with that id!");
         return activeMatches[id].player1;
     }
 
@@ -148,7 +154,7 @@ contract MastermindGame {
      * @param id id of the match whe are looking for
      */
     function getSecondPlayer(uint id) public view returns (address){
-        require(activeMatches[id].player1!=address(0),"No active games with that Id!");
+        require(activeMatches[id].player1!=address(0),"There is no match with that id!");
         require(activeMatches[id].player2!=address(0),"This game is waiting for an opponent!"); 
         return activeMatches[id].player2;
     }
@@ -161,7 +167,7 @@ contract MastermindGame {
      * @param id identifier of the game we would like to join
      */
     function joinMatchWithId(uint id) public{
-        require(activeMatches[id].player1!=address(0),"There is no match with that id");
+        require(activeMatches[id].player1!=address(0),"There is no match with that id!");
         require(activeMatches[id].player1!=msg.sender,"You cannot join a match created by yourself!");
         Match storage m=activeMatches[id];
         if(m.player2!=address(0)){ //second address not "null"
@@ -231,12 +237,12 @@ contract MastermindGame {
     }
 
     /**
-     * @notice Function callable by the partecipants of a match in order to deposit the amount to put in stake.
+     * @notice Function callable by the participants of a match in order to deposit the amount to put in stake.
      * @param matchId id of the match for which we are paying
      */
     function depositStake(uint matchId) onlyMatchPartecipant(matchId) payable public{
         require(msg.value>0,"The match stake has to be greater than zero!");
-        require(msg.value==activeMatches[matchId].stake,"You have sent an incorrect amout of WEI for this game");
+        require(msg.value==activeMatches[matchId].stake,"You have sent an incorrect amout of WEI for this game!");
         Match storage m=activeMatches[matchId];
         if(msg.sender==m.player1){
             if(!m.deposit1){
@@ -260,14 +266,14 @@ contract MastermindGame {
     }
 
     /**
-     * @notice Function callable by the partecipants of a match in order to retire the amount of wei they have put in stake.
+     * @notice Function callable by the participants of a match in order to retire the amount of wei they have put in stake.
      * This works only if the phase of wei collection takes more than STAKEPAYMENTDEADLINE seconds. This action will
      * nullify the match.
      * @param matchId id of the match of which we would like to retire the funds
      */
     function requestRefundMatchStake(uint matchId) onlyMatchPartecipant(matchId) public {
         Match storage m=activeMatches[matchId];
-        require(m.player1!=address(0),"There is no match with that id");
+        require(m.player1!=address(0),"There is no match with that id!");
         require((!m.deposit1)||(!m.deposit2),"Both players have put their funds in stake!");
 
         //The caller has to have done the payment before, otherwise cannot request the refund
@@ -325,7 +331,44 @@ contract MastermindGame {
     }
 
     //---TURN ACTIONS---
-    //public publishCodeHash(
+    /**
+     * @notice Function invoked by the player who has the role of codeMaker of the turn
+     * in order to load the digest of the secret. The hash is stored to guarantee that
+     * he cannot change the code he has initially produce as a consequence of the guesses
+     * of the codeBreaker.
+     * @param matchId id of the match
+     * @param turnId id of the current turn
+     * @param codeDigest digest of the code produced by the codeMaker
+     */
+    function publishCodeHash(uint matchId, uint turnId, bytes32 codeDigest) onlyCodeMaker(matchId, turnId) public{ 
+        //The checks regarding the match/turn ids are performed by the modifier
+        //Check that this turn is not already finished.
+        require((activeMatches[matchId].turns.length)-1==turnId,"This turn is already finished!");
+        require((activeMatches[matchId].turns[turnId].codeHash)==0,"You cannot change the code digest during the match!");
+        //PENSA SE FAR PARTIRE IL PUNISHMENT GIA' QUI
+        activeMatches[matchId].turns[turnId].codeHash=codeDigest;
+        emit codeHashPublished(matchId, turnId, codeDigest);
+    }
+    
+    function guessTheCode(uint matchId, uint turnId, string memory codeProponed) onlyCodeBreaker(matchId, turnId) public{ 
+        //The checks regarding the match/turn ids are performed by the modifier
+        //Check that this turn is not already finished.
+        require((activeMatches[matchId].turns.length)-1==turnId,"This turn is already finished!");
+
+        Turn storage t=activeMatches[matchId].turns[turnId]; //actual turn
+        require((t.codeProposals.length==t.correctColor.length)&&(t.codeProposals.length==t.correctColorAndPosition.length),"You need to wait the feedback from the codeMaker regarding the last code you have proposed!");
+
+        //We assume that the string received by the contract is like "BCRTA", where each char represents one of the colors available in this game
+        //Before pushing in the array of code proposed check its correctness
+        charCheckPrototype(codeProponed);
+        
+        t.codeProposals.push(codeProponed);
+        emit newGuess(matchId, turnId, codeProponed);
+    }
+
+    function charCheckPrototype(string memory a) public view{
+        Utils.contains(availableColors,a);
+    }
     /**
      * @notice This function removes the element in position "target" from
      * the uint array. Since it's used to remove elements from uint arrays stored
@@ -350,11 +393,33 @@ contract MastermindGame {
         _;
     }
 
+    modifier onlyCodeMaker(uint matchId, uint turnId){
+        require(activeMatches[matchId].player1!=address(0),"There is no match with that id!");
+        require(activeMatches[matchId].turns.length>0,"That match is not started yet!");
+        require((activeMatches[matchId].player1==msg.sender)||(activeMatches[matchId].player2==msg.sender),"You are not a participant of this game!");
+        require(activeMatches[matchId].turns[turnId].codeMaker==msg.sender,"You are not the codeMaker of this game!");
+        _;
+    }
+
+    modifier onlyCodeBreaker(uint matchId, uint turnId){
+        require(activeMatches[matchId].player1!=address(0),"There is no match with that id!");
+        require(activeMatches[matchId].turns.length>0,"That match is not started yet!");
+        require((activeMatches[matchId].player1==msg.sender)||(activeMatches[matchId].player2==msg.sender),"You are not a participant of this game!");
+        require(activeMatches[matchId].turns[turnId].codeMaker!=msg.sender,"You are not the codeBreaker of this game!");
+        _;
+    }
+
     function dropTheMatch(uint matchId) private{
-        require(activeMatches[matchId].player1!=address(0),"There is no match with that id");
+        require(activeMatches[matchId].player1!=address(0),"There is no match with that id!");
         activeMatchesNum--;
         delete activeMatches[matchId];
         //This function can be called when the players have not put their fund in stake within the time agreed.
         emit matchDeleted(matchId);
+    }
+
+    function getCodeMaker(uint matchId, uint turnId) public view returns (address){
+        require(activeMatches[matchId].player1!=address(0),"There is no match with that id!");
+        require(activeMatches[matchId].turns.length>0,"That match is not started yet!");
+        return activeMatches[matchId].turns[turnId].codeMaker;
     }
 }
