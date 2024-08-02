@@ -350,6 +350,15 @@ contract MastermindGame {
         emit codeHashPublished(matchId, turnId, codeDigest);
     }
     
+    /**
+     * @notice Function invoked by the player who has the role of codeBreaker of the turn in
+     * order to send a candidateCode that the codeMaker will evaluate. Notice that this function
+     * is callable only in the right moment of the turn, hence after the codeMaker has sent the feedback
+     * regarding the last attempt of the codeBreaker.
+     * @param matchId id of the match
+     * @param turnId id of the turn of that march
+     * @param codeProponed attempt of finding the code by the codeBreaker
+     */
     function guessTheCode(uint matchId, uint turnId, string memory codeProponed) onlyCodeBreaker(matchId, turnId) public{ 
         //The checks regarding the match/turn ids are performed by the modifier
         //Check that this turn is not already finished.
@@ -394,18 +403,22 @@ contract MastermindGame {
     }
 
     modifier onlyCodeMaker(uint matchId, uint turnId){
+        //console.log("OnlyCodeMaker Richiedente %s",msg.sender);
         require(activeMatches[matchId].player1!=address(0),"There is no match with that id!");
         require(activeMatches[matchId].turns.length>0,"That match is not started yet!");
         require((activeMatches[matchId].player1==msg.sender)||(activeMatches[matchId].player2==msg.sender),"You are not a participant of this game!");
         require(activeMatches[matchId].turns[turnId].codeMaker==msg.sender,"You are not the codeMaker of this game!");
+        //console.log("OnlyCodeMaker OK per %s",msg.sender);
         _;
     }
 
     modifier onlyCodeBreaker(uint matchId, uint turnId){
+        //console.log("OnlyCodeBreaker Richiedente %s",msg.sender);
         require(activeMatches[matchId].player1!=address(0),"There is no match with that id!");
         require(activeMatches[matchId].turns.length>0,"That match is not started yet!");
         require((activeMatches[matchId].player1==msg.sender)||(activeMatches[matchId].player2==msg.sender),"You are not a participant of this game!");
         require(activeMatches[matchId].turns[turnId].codeMaker!=msg.sender,"You are not the codeBreaker of this game!");
+        //console.log("OnlyCodeBreaker OK per %s",msg.sender);
         _;
     }
 
@@ -418,8 +431,10 @@ contract MastermindGame {
     }
 
     function getCodeMaker(uint matchId, uint turnId) public view returns (address){
+        //console.log("GetCodeMaker: Richiedente %s | CodeMaker %s",msg.sender, activeMatches[matchId].turns[turnId].codeMaker);
         require(activeMatches[matchId].player1!=address(0),"There is no match with that id!");
         require(activeMatches[matchId].turns.length>0,"That match is not started yet!");
+
         return activeMatches[matchId].turns[turnId].codeMaker;
     }
 }
