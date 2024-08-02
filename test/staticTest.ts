@@ -460,6 +460,18 @@ describe("MastermindGame Contract", function(){
             }
         })
 
+        it("Should fail if the caller provides a code with a wrong color",async function(){
+            const {owner, joiner, MastermindGame}=await loadFixture(publicMatchStarted);
+            const guess="ZZZZZ";
+            if((await MastermindGame.getCodeMaker(0,0))==owner.address){
+                //The codemaker is 'owner' hence it cannot guess
+                await expect(MastermindGame.connect(joiner).guessTheCode(0, 0, guess)).to.revertedWith("The guess contains an invalid color!");
+            }else{
+                //The codemaker is 'joiner' hence it cannot guess
+                await expect(MastermindGame.guessTheCode(0, 0, guess)).to.revertedWith("The guess contains an invalid color!");                
+            }
+        })
+
         it("Correctly sets the guess in the turn state and emits the event",async function(){
             const {owner, joiner, MastermindGame}=await loadFixture(publicMatchStarted);
             const guess="BBRAV";
@@ -474,15 +486,4 @@ describe("MastermindGame Contract", function(){
         })
     })
 
-    /*
-    describe("Prototype check",function(){
-        it("success charCMP",async function(){
-            const {owner, MastermindGame}=await loadFixture(onlyDeployFixture);
-            await expect(MastermindGame.charCheckPrototype("ABC")).not.to.be.reverted;
-        })
-        it("fails charCMP",async function () {   
-            const {owner, MastermindGame}=await loadFixture(onlyDeployFixture);
-            await expect(MastermindGame.charCheckPrototype('AQH')).to.be.revertedWith("The guess contains an invalid color!");
-        })
-    })*/
 })

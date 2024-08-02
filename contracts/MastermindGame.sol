@@ -86,7 +86,7 @@ contract MastermindGame {
         gameManager=msg.sender;
     }
 
-    //---MATCHMAKING PHASE---
+    //----------MATCHMAKING PHASE----------
     /**
      * @notice Function invoked in order to create a new game without setting
      * the address of the opponent.
@@ -216,7 +216,7 @@ contract MastermindGame {
         emit secondPlayerJoined(msg.sender, id);
     }
 
-    //---MATCH STAKE NEGOTIATION PHASE---
+    //----------MATCH STAKE NEGOTIATION PHASE----------
     /*Here it's assumed that the value put in stake by both user for their match will be decided
     offchain and, whenever they have reached an agreement on that value, the match creator will set
     this parameter of the match. */
@@ -292,7 +292,7 @@ contract MastermindGame {
         dropTheMatch(matchId);
     }
     
-    //---TURN INITIALIZATION---
+    //----------TURN INITIALIZATION----------
     /**
      * @notice Match creation automatically invoked whenever the contract receives
      * the stake payment from both the game participant.
@@ -330,7 +330,7 @@ contract MastermindGame {
         emit newTurnStarted(matchId, turnNo, t.codeMaker);
     }
 
-    //---TURN ACTIONS---
+    //----------TURN ACTIONS----------
     /**
      * @notice Function invoked by the player who has the role of codeMaker of the turn
      * in order to load the digest of the secret. The hash is stored to guarantee that
@@ -369,15 +369,14 @@ contract MastermindGame {
 
         //We assume that the string received by the contract is like "BCRTA", where each char represents one of the colors available in this game
         //Before pushing in the array of code proposed check its correctness
-        charCheckPrototype(codeProponed);
+        if(!Utils.containsCharsOf(availableColors,codeProponed))
+            revert("The guess contains an invalid color!");
         
         t.codeProposals.push(codeProponed);
         emit newGuess(matchId, turnId, codeProponed);
     }
 
-    function charCheckPrototype(string memory a) public view{
-        Utils.contains(availableColors,a);
-    }
+    
     /**
      * @notice This function removes the element in position "target" from
      * the uint array. Since it's used to remove elements from uint arrays stored
