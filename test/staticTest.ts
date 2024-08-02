@@ -4,7 +4,7 @@ import hre, {ethers} from "hardhat";
 const {utils} = require("ethers");
 import { anyValue } from "@nomicfoundation/hardhat-chai-matchers/withArgs";
 
-describe("Game Contract", function(){
+describe("MastermindGame Contract", function(){
     const FIVE_MINUTES_IN_SECONDS=300;
     const colors=4; 
     const codesize=5;
@@ -47,8 +47,7 @@ describe("Game Contract", function(){
         await MastermindGame.connect(joiner).joinMatchWithId(0);
         return { owner, joiner, MastermindGame};
     }
-
-    
+ 
     async function publicMatchCreatorDeposited() {
         const {owner, joiner, MastermindGame}=await loadFixture(publicMatchBothJoined);
         await MastermindGame.setStakeValue(0,5);
@@ -68,7 +67,6 @@ describe("Game Contract", function(){
         const {owner, joiner, MastermindGame}=await loadFixture(publicMatchStarted);
         const code="ARBGR";
         const digest=await ethers.keccak256(ethers.toUtf8Bytes(code));
-        //Turn 0 of match 0
         if((await MastermindGame.getCodeMaker(0,0))==owner.address){
             await MastermindGame.publishCodeHash(0,0,digest);
         }else{
@@ -76,6 +74,7 @@ describe("Game Contract", function(){
         }
         return { owner, joiner, MastermindGame};
     }
+
     describe("Contract creation", function(){
         //Check that the assignment of the value is correct in case of right parameters
         it("Constructor should initialize the game parameters", async function () {
@@ -345,7 +344,7 @@ describe("Game Contract", function(){
                 const [own, addr1,addr2]= await ethers.getSigners();
                 
                 //Addr2 is not a member of that game
-                await expect(MastermindGame.connect(addr2).requestRefundMatchStake(55)).to.revertedWith("You are not participating to this match!");
+                await expect(MastermindGame.connect(addr2).requestRefundMatchStake(55)).to.revertedWith("There is no match with that id!");
             })
             it("Fails if both players have already paid", async function () {
                 const {owner, MastermindGame}=await loadFixture(publicMatchCreatorDeposited);
@@ -370,7 +369,7 @@ describe("Game Contract", function(){
             })
         })
     })
-    
+
     describe("Code hash publication by the codeOwner", function(){
         
         it("Should fail if the code hash is published by someone not partecipating in the game",async function(){
@@ -380,17 +379,17 @@ describe("Game Contract", function(){
             const code="ARBGR";
             const digest=await ethers.keccak256(ethers.toUtf8Bytes(code));
             //Turn 0 of match 0
-            await expect(MastermindGame.connect(addr2).publishCodeHash(0,0,digest)).to.revertedWith("You are not a participant of this game!");
+            await expect(MastermindGame.connect(addr2).publishCodeHash(0,0,digest)).to.revertedWith("You are not participating to this match!");
         })
 
         it("Should fail if the match is not started yet",async function(){
             const {owner, MastermindGame}=await loadFixture(publicMatchCreatorDeposited);
-            const [own, addr1, addr2]= await ethers.getSigners();
+            const [own, addr1]= await ethers.getSigners();
             
             const code="ARBGR";
             const digest=await ethers.keccak256(ethers.toUtf8Bytes(code));
             //Turn 0 of match 0
-            await expect(MastermindGame.connect(addr2).publishCodeHash(0,0,digest)).to.revertedWith("That match is not started yet!");
+            await expect(MastermindGame.connect(addr1).publishCodeHash(0,0,digest)).to.revertedWith("That match is not started yet!");
         })
 
         it("Should fail if the matchId does not exists",async function(){
@@ -434,14 +433,13 @@ describe("Game Contract", function(){
             const {owner, joiner, MastermindGame}=await loadFixture(publicTurnHashPublished);
             const [own, addr1, addr2]= await ethers.getSigners();
             const guess="BBRAV";
-            await expect(MastermindGame.connect(addr2).guessTheCode(0, 0, guess)).to.revertedWith("You are not a participant of this game!");
+            await expect(MastermindGame.connect(addr2).guessTheCode(0, 0, guess)).to.revertedWith("You are not participating to this match!");
         })
 
         it("Should fail if the match is not started yet",async function(){
-            const {owner, MastermindGame}=await loadFixture(publicMatchCreatorDeposited);
-            const [own, addr1, addr2]= await ethers.getSigners();
+            const {owner, joiner, MastermindGame}=await loadFixture(publicMatchCreatorDeposited);
             const guess="BBRAV";
-            await expect(MastermindGame.connect(addr2).guessTheCode(0,0,guess)).to.revertedWith("That match is not started yet!");
+            await expect(MastermindGame.connect(joiner).guessTheCode(0,0,guess)).to.revertedWith("That match is not started yet!");
         })
 
         it("Should fail if the matchId does not exists",async function(){

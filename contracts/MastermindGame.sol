@@ -340,7 +340,7 @@ contract MastermindGame {
      * @param turnId id of the current turn
      * @param codeDigest digest of the code produced by the codeMaker
      */
-    function publishCodeHash(uint matchId, uint turnId, bytes32 codeDigest) onlyCodeMaker(matchId, turnId) public{ 
+    function publishCodeHash(uint matchId, uint turnId, bytes32 codeDigest) onlyMatchPartecipant(matchId) onlyCodeMaker(matchId, turnId) public{ 
         //The checks regarding the match/turn ids are performed by the modifier
         //Check that this turn is not already finished.
         require((activeMatches[matchId].turns.length)-1==turnId,"This turn is already finished!");
@@ -359,7 +359,7 @@ contract MastermindGame {
      * @param turnId id of the turn of that march
      * @param codeProponed attempt of finding the code by the codeBreaker
      */
-    function guessTheCode(uint matchId, uint turnId, string memory codeProponed) onlyCodeBreaker(matchId, turnId) public{ 
+    function guessTheCode(uint matchId, uint turnId, string memory codeProponed) onlyMatchPartecipant(matchId) onlyCodeBreaker(matchId, turnId) public{ 
         //The checks regarding the match/turn ids are performed by the modifier
         //Check that this turn is not already finished.
         require((activeMatches[matchId].turns.length)-1==turnId,"This turn is already finished!");
@@ -393,32 +393,40 @@ contract MastermindGame {
     }
 
     modifier onlyMatchCreator(uint matchId) {
+        require(activeMatches[matchId].player1!=address(0),"There is no match with that id!");
         require(activeMatches[matchId].player1==msg.sender,"Only the creator of that match can perform this operation!");
         _;
     }
 
     modifier onlyMatchPartecipant(uint matchId) {
+        require(activeMatches[matchId].player1!=address(0),"There is no match with that id!");
         require((activeMatches[matchId].player1==msg.sender)||(activeMatches[matchId].player2==msg.sender),"You are not participating to this match!");
         _;
     }
 
-    modifier onlyCodeMaker(uint matchId, uint turnId){
+    /**
+     * @notice this modifier allows the operation at which it is attached only if
+     * the caller is the codeBreaker of that turn of the match.
+     */
+    modifier onlyCodeMaker (uint matchId, uint turnId){
         //console.log("OnlyCodeMaker Richiedente %s",msg.sender);
         require(activeMatches[matchId].player1!=address(0),"There is no match with that id!");
         require(activeMatches[matchId].turns.length>0,"That match is not started yet!");
-        require((activeMatches[matchId].player1==msg.sender)||(activeMatches[matchId].player2==msg.sender),"You are not a participant of this game!");
+        //require((activeMatches[matchId].player1==msg.sender)||(activeMatches[matchId].player2==msg.sender),"You are not a participant of this game!");
         require(activeMatches[matchId].turns[turnId].codeMaker==msg.sender,"You are not the codeMaker of this game!");
         //console.log("OnlyCodeMaker OK per %s",msg.sender);
         _;
     }
 
+    /**
+     * @notice this modifier allows the operation at which it is attached only if
+     * the caller is the codeBreaker of that turn of the match.
+     */
     modifier onlyCodeBreaker(uint matchId, uint turnId){
-        //console.log("OnlyCodeBreaker Richiedente %s",msg.sender);
         require(activeMatches[matchId].player1!=address(0),"There is no match with that id!");
         require(activeMatches[matchId].turns.length>0,"That match is not started yet!");
-        require((activeMatches[matchId].player1==msg.sender)||(activeMatches[matchId].player2==msg.sender),"You are not a participant of this game!");
+        //require((activeMatches[matchId].player1==msg.sender)||(activeMatches[matchId].player2==msg.sender),"You are not a participant of this game!");
         require(activeMatches[matchId].turns[turnId].codeMaker!=msg.sender,"You are not the codeBreaker of this game!");
-        //console.log("OnlyCodeBreaker OK per %s",msg.sender);
         _;
     }
 
