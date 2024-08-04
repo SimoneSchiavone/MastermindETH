@@ -81,7 +81,7 @@ describe("MastermindGame Contract", function(){
             const {owner, MastermindGame}=await loadFixture(onlyDeployFixture);
             expect(await MastermindGame.codeSize()).to.equal(codesize);
             //expect(await MastermindGame.availableColors()).to.equal(colors);
-            expect(await MastermindGame.noGuessedReward()).to.equal(reward);
+            expect(await MastermindGame.extraReward()).to.equal(reward);
             expect(await MastermindGame.gameManager()).to.equal(owner);
         })
 
@@ -112,8 +112,8 @@ describe("MastermindGame Contract", function(){
                     Utils: add,
                 },
             });
-            await expect(MastermindGame_factory.deploy(0, reward)).to.be.revertedWith("The code size should be greater than 1!");
-            //await expect(MastermindGame_factory.deploy(colors, 0, reward)).to.be.revertedWith("The code size should be greater than 1!");
+            //await expect(MastermindGame_factory.deploy(0, reward)).to.be.revertedWithCustomError(MastermindGame_factory,"InvalidParameter");
+            await expect(MastermindGame_factory.deploy( 0, reward)).to.be.revertedWith("The code size should be greater than 1!");
         })
 
         it("Constructor should fails with reward <=0", async function () {
@@ -177,13 +177,13 @@ describe("MastermindGame Contract", function(){
             it("Creator cannot join again in the same match", async function () {
                 const {owner, MastermindGame}=await loadFixture(publicMatchCreated);
                 //For the first match created the id will be surely 0
-                await expect(MastermindGame.joinMatchWithId(0)).to.be.revertedWith("You cannot join a match created by yourself!");
+                await expect(MastermindGame.joinMatchWithId(0)).to.be.revertedWithCustomError(MastermindGame,"UnauthorizedAccess").withArgs("You cannot join a match you have created");
             })
             
             it("Cannot join a match which doesn't exist", async function () {
                 const {owner, MastermindGame}=await loadFixture(publicMatchCreated);
                 //For the first match created the id will be surely 0 hence match with id 99 does not exits
-                await expect(MastermindGame.joinMatchWithId(99)).to.be.revertedWith("There is no match with that id!");
+                await expect(MastermindGame.joinMatchWithId(99)).to.be.revertedWithCustomError(MastermindGame, "MatchNotFound").withArgs(99);
             })
             
             it("Fails to join a full match", async function () {
@@ -193,14 +193,14 @@ describe("MastermindGame Contract", function(){
                 //first join OK
                 await MastermindGame.connect(addr1).joinMatchWithId(0);
                 //Second join from a different user should be reverted
-                await expect(MastermindGame.connect(adrr2).joinMatchWithId(0)).to.be.revertedWith("This match is already full!");
+                await expect(MastermindGame.connect(adrr2).joinMatchWithId(0)).to.be.revertedWithCustomError(MastermindGame,"UnauthorizedAccess").withArgs("Full match");
             })
             
             it("Fails to join a private match where we are not invited", async function () {
                 const {owner, MastermindGame}=await loadFixture(privateMatchCreated);
                 //private match created by own in order to play with addr1
                 const [own, addr1,addr2]= await ethers.getSigners();
-                await expect(MastermindGame.connect(addr2).joinMatchWithId(0)).to.be.revertedWith("You are not authorized to join this match!");
+                await expect(MastermindGame.connect(addr2).joinMatchWithId(0)).to.be.revertedWithCustomError(MastermindGame,"UnauthorizedAccess").withArgs("You cannot join this private match");
                 await expect(MastermindGame.connect(addr1).joinMatchWithId(0)).not.to.be.reverted;
             })
             
@@ -236,7 +236,7 @@ describe("MastermindGame Contract", function(){
             
             it("Revert in case of join a match created by ourself", async function(){
                 const {owner, MastermindGame}=await loadFixture(publicMatchCreated);  
-                await expect(MastermindGame.joinMatch()).to.be.revertedWith("You cannot join a match created by yourself, try again!");
+                await expect(MastermindGame.joinMatch()).to.be.revertedWithCustomError(MastermindGame,"UnauthorizedAccess").withArgs("You cannot join a match you have created");
             })
             it("Correctly joins", async function () {
                 const {owner, MastermindGame}=await loadFixture(publicMatchCreated);
@@ -265,14 +265,14 @@ describe("MastermindGame Contract", function(){
                 const {owner, MastermindGame}=await loadFixture(publicMatchCreated);
             
                 //Match id will be 0 for the fist one created
-                await expect(MastermindGame.setStakeValue(0,0)).to.be.revertedWith("The match stake has to be greater than zero!");                
+                await expect(MastermindGame.setStakeValue(0,0)).to.be.revertedWithCustomError(MastermindGame, "InvalidParameter").withArgs("stakeValue","=0");               
             })
             it("Should fail if called more than once", async function () {
                 const {owner, MastermindGame}=await loadFixture(publicMatchCreated);
             
                 //Match id will be 0 for the fist one created
                 expect(await MastermindGame.setStakeValue(0,5)).not.to.be.reverted;
-                await expect(MastermindGame.setStakeValue(0,5)).to.be.revertedWith("The amount to put in stake has already been fixed by the match creator!");
+                await expect(MastermindGame.setStakeValue(0,5)).to.be.revertedWithCustomError(MastermindGame,"DuplicateOperation").withArgs("Stake already fixed for that match");
             })
             it("Corretly sets the match stake",async function () {
                 const {owner, MastermindGame}=await loadFixture(publicMatchCreated);
@@ -284,20 +284,20 @@ describe("MastermindGame Contract", function(){
             it("Fails if no wei is sent", async function(){
                 const {owner, MastermindGame}=await loadFixture(publicMatchCreated);
 
-                await expect(MastermindGame.depositStake(0)).to.revertedWith("The match stake has to be greater than zero!");
+                await expect(MastermindGame.depositStake(0)).to.be.revertedWithCustomError(MastermindGame,"InvalidParameter").withArgs("WEI sent", "=0");
             })
             it("Fails if called by someone not participating in that game", async function () {
                 const {owner, joiner, MastermindGame}=await loadFixture(publicMatchBothJoined);
                 const [own, addr1,addr2]= await ethers.getSigners();
                 
                 //Addr2 is not a member of that game
-                await expect(MastermindGame.connect(addr2).depositStake(0, {value: 1})).to.revertedWith("You are not participating to this match!");
+                await expect(MastermindGame.connect(addr2).depositStake(0, {value: 1})).to.be.revertedWithCustomError(MastermindGame,"UnauthorizedAccess").withArgs("You are not a participant of the match");
             })
             it("Fails if the amount sent differs from the one agreed by the players.", async function () {
                 const {owner, MastermindGame}=await loadFixture(publicMatchCreated);
                 await MastermindGame.setStakeValue(0,5);
                 //agreed 5 sent 1
-                await expect(MastermindGame.depositStake(0, {value: 1})).to.revertedWith("You have sent an incorrect amout of WEI for this game!");
+                await expect(MastermindGame.depositStake(0, {value: 1})).to.be.revertedWithCustomError(MastermindGame,"InvalidParameter").withArgs("WEI sent", "!= agreed stake");
             })
             it("Fails in case of multiple payments from the same user",async function () {
                 const {owner, MastermindGame}=await loadFixture(publicMatchCreated);
@@ -308,7 +308,7 @@ describe("MastermindGame Contract", function(){
                 //Creators sends its funds
                 await expect(MastermindGame.depositStake(0, {value: 5})).not.to.be.reverted;
                 //Player sends its funds
-                await expect(MastermindGame.depositStake(0, {value: 5})).to.be.revertedWith("You have already sent the wei in stake for this match!");
+                await expect(MastermindGame.depositStake(0, {value: 5})).to.be.revertedWithCustomError(MastermindGame, "DuplicateOperation").withArgs("WEI already sent");
             })
             it("Properly manages the payments from the players",async function () {
                 const {owner, joiner, MastermindGame}=await loadFixture(publicMatchBothJoined);
@@ -337,14 +337,14 @@ describe("MastermindGame Contract", function(){
                 const [own, addr1,addr2]= await ethers.getSigners();
                 
                 //Addr2 is not a member of that game
-                await expect(MastermindGame.connect(addr2).requestRefundMatchStake(0)).to.revertedWith("You are not participating to this match!");
+                await expect(MastermindGame.connect(addr2).requestRefundMatchStake(0)).to.be.revertedWithCustomError(MastermindGame,"UnauthorizedAccess").withArgs("You are not a participant of the match");
             })
             it("Fails if a wrong matchId is passed", async function () {
                 const {owner, MastermindGame}=await loadFixture(publicMatchCreatorDeposited);
                 const [own, addr1,addr2]= await ethers.getSigners();
                 
                 //Addr2 is not a member of that game
-                await expect(MastermindGame.connect(addr2).requestRefundMatchStake(55)).to.revertedWith("There is no match with that id!");
+                await expect(MastermindGame.connect(addr2).requestRefundMatchStake(55)).to.revertedWithCustomError(MastermindGame, "MatchNotFound").withArgs(55);
             })
             it("Fails if both players have already paid", async function () {
                 const {owner, MastermindGame}=await loadFixture(publicMatchCreatorDeposited);
@@ -370,7 +370,7 @@ describe("MastermindGame Contract", function(){
         })
     })
 
-    describe("Code hash publication by the codeOwner", function(){
+    describe("Code hash publication by the codeMaker", function(){
         
         it("Should fail if the code hash is published by someone not partecipating in the game",async function(){
             const {owner, joiner, MastermindGame}=await loadFixture(publicMatchStarted);
@@ -379,7 +379,7 @@ describe("MastermindGame Contract", function(){
             const code="ARBGR";
             const digest=await ethers.keccak256(ethers.toUtf8Bytes(code));
             //Turn 0 of match 0
-            await expect(MastermindGame.connect(addr2).publishCodeHash(0,0,digest)).to.revertedWith("You are not participating to this match!");
+            await expect(MastermindGame.connect(addr2).publishCodeHash(0,0,digest)).to.be.revertedWithCustomError(MastermindGame,"UnauthorizedAccess").withArgs("You are not a participant of the match");
         })
 
         it("Should fail if the match is not started yet",async function(){
@@ -389,7 +389,7 @@ describe("MastermindGame Contract", function(){
             const code="ARBGR";
             const digest=await ethers.keccak256(ethers.toUtf8Bytes(code));
             //Turn 0 of match 0
-            await expect(MastermindGame.connect(addr1).publishCodeHash(0,0,digest)).to.revertedWith("That match is not started yet!");
+            await expect(MastermindGame.connect(addr1).publishCodeHash(0,0,digest)).to.be.revertedWithCustomError(MastermindGame,"MatchNotStarted").withArgs(0);
         })
 
         it("Should fail if the matchId does not exists",async function(){
@@ -398,7 +398,7 @@ describe("MastermindGame Contract", function(){
             const code="ARBGR";
             const digest=await ethers.keccak256(ethers.toUtf8Bytes(code));
             //Turn 0 of match 0
-            await expect(MastermindGame.publishCodeHash(4,0,digest)).to.revertedWith("There is no match with that id!");
+            await expect(MastermindGame.publishCodeHash(4,0,digest)).to.revertedWithCustomError(MastermindGame, "MatchNotFound").withArgs(4);
         })
 
         it("Should fail if the caller is not the codemaker of the turn",async function(){
@@ -407,10 +407,27 @@ describe("MastermindGame Contract", function(){
             const digest=await ethers.keccak256(ethers.toUtf8Bytes(code));
             if((await MastermindGame.getCodeMaker(0,0))==owner.address){
                 //The codemaker is 'owner' hence 'joiner' cannot set the hashCode
-                await expect(MastermindGame.connect(joiner).publishCodeHash(0, 0, digest)).to.revertedWith("You are not the codeMaker of this game!");
+                await expect(MastermindGame.connect(joiner).publishCodeHash(0, 0, digest)).to.be.revertedWithCustomError(MastermindGame,"UnauthorizedOperation").withArgs("You are not the codeMaker of this turn");
             }else{
                 //The codemaker is 'joiner' hence 'owner' cannot set the hashCode
-                await expect(MastermindGame.publishCodeHash(0,0,digest)).to.revertedWith("You are not the codeMaker of this game!");                
+                await expect(MastermindGame.publishCodeHash(0,0,digest)).to.be.revertedWithCustomError(MastermindGame,"UnauthorizedOperation").withArgs("You are not the codeMaker of this turn");               
+            }   
+        })
+
+        it("Should fail if the the code hash is changed more than once",async function(){
+            const {owner, joiner, MastermindGame}=await loadFixture(publicMatchStarted);
+            let code="ARBGR";
+            let digest=await ethers.keccak256(ethers.toUtf8Bytes(code));
+            if((await MastermindGame.getCodeMaker(0,0))==owner.address){
+                await expect(MastermindGame.publishCodeHash(0, 0, digest)).not.to.be.reverted;
+                code="RRBVG";
+                digest=await ethers.keccak256(ethers.toUtf8Bytes(code));
+                await expect(MastermindGame.publishCodeHash(0, 0, digest)).to.be.revertedWithCustomError(MastermindGame,"DuplicateOperation").withArgs("Secret code digest published");
+            }else{
+                await expect(MastermindGame.connect(joiner).publishCodeHash(0, 0, digest)).not.to.be.reverted;
+                code="RRBVG";
+                digest=await ethers.keccak256(ethers.toUtf8Bytes(code));
+                await expect(MastermindGame.connect(joiner).publishCodeHash(0, 0, digest)).to.be.revertedWithCustomError(MastermindGame,"DuplicateOperation").withArgs("Secret code digest published");               
             }   
         })
 
@@ -433,47 +450,92 @@ describe("MastermindGame Contract", function(){
             const {owner, joiner, MastermindGame}=await loadFixture(publicTurnHashPublished);
             const [own, addr1, addr2]= await ethers.getSigners();
             const guess="BBRAV";
-            await expect(MastermindGame.connect(addr2).guessTheCode(0, 0, guess)).to.revertedWith("You are not participating to this match!");
+            await expect(MastermindGame.connect(addr2).guessTheCode(0, 0, guess)).to.be.revertedWithCustomError(MastermindGame,"UnauthorizedAccess").withArgs("You are not a participant of the match");
         })
 
         it("Should fail if the match is not started yet",async function(){
             const {owner, joiner, MastermindGame}=await loadFixture(publicMatchCreatorDeposited);
             const guess="BBRAV";
-            await expect(MastermindGame.connect(joiner).guessTheCode(0,0,guess)).to.revertedWith("That match is not started yet!");
+            await expect(MastermindGame.connect(joiner).guessTheCode(0,0,guess)).to.be.revertedWithCustomError(MastermindGame,"MatchNotStarted").withArgs(0);
         })
 
         it("Should fail if the matchId does not exists",async function(){
-            const {owner, joiner, MastermindGame}=await loadFixture(publicMatchStarted);
+            const {owner, joiner, MastermindGame}=await loadFixture(publicTurnHashPublished);
             const guess="BBRAV";
-            await expect(MastermindGame.guessTheCode(4,0,guess)).to.revertedWith("There is no match with that id!");
+            await expect(MastermindGame.guessTheCode(4,0,guess)).to.revertedWithCustomError(MastermindGame, "MatchNotFound").withArgs(4);
         })
 
         it("Should fail if the caller is not the codeBreaker of the turn",async function(){
-            const {owner, joiner, MastermindGame}=await loadFixture(publicMatchStarted);
+            const {owner, joiner, MastermindGame}=await loadFixture(publicTurnHashPublished);
             const guess="BBRAV";
             if((await MastermindGame.getCodeMaker(0,0))==owner.address){
                 //The codemaker is 'owner' hence it cannot guess
-                await expect(MastermindGame.guessTheCode(0, 0, guess)).to.revertedWith("You are not the codeBreaker of this game!");
+                await expect(MastermindGame.guessTheCode(0, 0, guess)).to.be.revertedWithCustomError(MastermindGame,"UnauthorizedOperation").withArgs("You are not the codeBreaker of this turn");
             }else{
                 //The codemaker is 'joiner' hence it cannot guess
-                await expect(MastermindGame.connect(joiner).guessTheCode(0, 0, guess)).to.revertedWith("You are not the codeBreaker of this game!");                
+                await expect(MastermindGame.connect(joiner).guessTheCode(0, 0, guess)).to.be.revertedWithCustomError(MastermindGame,"UnauthorizedOperation").withArgs("You are not the codeBreaker of this turn");                
+            }
+        })
+
+        it("Should fail if a guess is sent before getting the feedback of the previous one",async function(){
+            const {owner, joiner, MastermindGame}=await loadFixture(publicTurnHashPublished);
+            const guess="BBRAV";
+            if((await MastermindGame.getCodeMaker(0,0))==owner.address){
+                //The codemaker is 'owner' hence 'joiner' has to guess
+                await expect(MastermindGame.connect(joiner).guessTheCode(0, 0, guess)).not.to.be.reverted;
+                await expect(MastermindGame.connect(joiner).guessTheCode(0, 0, "BRAVG")).to.revertedWith("You need to wait the feedback from the codeMaker regarding the last code you have proposed!");
+            }else{
+                //The codemaker is 'joiner' hence 'owner' has guess
+                await expect(MastermindGame.guessTheCode(0, 0, guess)).not.to.be.reverted;
+                await expect(MastermindGame.guessTheCode(0, 0, "BRAVG")).to.revertedWith("You need to wait the feedback from the codeMaker regarding the last code you have proposed!");             
             }
         })
 
         it("Should fail if the caller provides a code with a wrong color",async function(){
-            const {owner, joiner, MastermindGame}=await loadFixture(publicMatchStarted);
+            const {owner, joiner, MastermindGame}=await loadFixture(publicTurnHashPublished);
             const guess="ZZZZZ";
             if((await MastermindGame.getCodeMaker(0,0))==owner.address){
                 //The codemaker is 'owner' hence it cannot guess
-                await expect(MastermindGame.connect(joiner).guessTheCode(0, 0, guess)).to.revertedWith("The guess contains an invalid color!");
+                await expect(MastermindGame.connect(joiner).guessTheCode(0, 0, guess)).to.be.revertedWithCustomError(MastermindGame,"InvalidParameter").withArgs("codeProponed","Invalid color in the code");
             }else{
                 //The codemaker is 'joiner' hence it cannot guess
-                await expect(MastermindGame.guessTheCode(0, 0, guess)).to.revertedWith("The guess contains an invalid color!");                
+                await expect(MastermindGame.guessTheCode(0, 0, guess)).to.be.revertedWithCustomError(MastermindGame,"InvalidParameter").withArgs("codeProponed","Invalid color in the code");
+            }
+        })
+
+        it("It should fail the limit of attempts is reached",async function(){
+            const {owner, joiner, MastermindGame}=await loadFixture(publicTurnHashPublished);
+            if((await MastermindGame.getCodeMaker(0,0))==owner.address){
+                //codeMaker 'owner', codeBreaker 'joiner'; numguesses is a constant of the contract (5)
+                await expect(MastermindGame.connect(joiner).guessTheCode(0, 0, "BBRAV")).not.to.be.reverted;
+                await expect(MastermindGame.provideFeedback(0, 0, 0, 3)).not.to.be.reverted;
+                await expect(MastermindGame.connect(joiner).guessTheCode(0, 0, "BRAVA")).not.to.be.reverted;
+                await expect(MastermindGame.provideFeedback(0, 0, 0, 3)).not.to.be.reverted;
+                await expect(MastermindGame.connect(joiner).guessTheCode(0, 0, "BARBA")).not.to.be.reverted;
+                await expect(MastermindGame.provideFeedback(0, 0, 0, 3)).not.to.be.reverted;
+                await expect(MastermindGame.connect(joiner).guessTheCode(0, 0, "BRACC")).not.to.be.reverted;
+                await expect(MastermindGame.provideFeedback(0, 0, 1, 2)).not.to.be.reverted;
+                await expect(MastermindGame.connect(joiner).guessTheCode(0, 0, "BRACC")).not.to.be.reverted;
+                await expect(MastermindGame.provideFeedback(0, 0, 1, 2)).not.to.be.reverted;
+                await expect(MastermindGame.connect(joiner).guessTheCode(0, 0, "GRATT")).to.be.revertedWith("Too many attempts for this turn!");
+            }else{
+                //codeMaker 'owner', codeBreaker 'joiner'; numguesses is a constant of the contract (5)
+                await expect(MastermindGame.guessTheCode(0, 0, "BBRAV")).not.to.be.reverted;
+                await expect(MastermindGame.connect(joiner).provideFeedback(0, 0, 0, 3)).not.to.be.reverted;
+                await expect(MastermindGame.guessTheCode(0, 0, "BRAVA")).not.to.be.reverted;
+                await expect(MastermindGame.connect(joiner).provideFeedback(0, 0, 0, 3)).not.to.be.reverted;
+                await expect(MastermindGame.guessTheCode(0, 0, "BARBA")).not.to.be.reverted;
+                await expect(MastermindGame.connect(joiner).provideFeedback(0, 0, 0, 3)).not.to.be.reverted;
+                await expect(MastermindGame.guessTheCode(0, 0, "BRACC")).not.to.be.reverted;
+                await expect(MastermindGame.connect(joiner).provideFeedback(0, 0, 1, 2)).not.to.be.reverted;
+                await expect(MastermindGame.guessTheCode(0, 0, "BRACC")).not.to.be.reverted;
+                await expect(MastermindGame.connect(joiner).provideFeedback(0, 0, 1, 2)).not.to.be.reverted;
+                await expect(MastermindGame.guessTheCode(0, 0, "GRATT")).to.be.revertedWith("Too many attempts for this turn!");
             }
         })
 
         it("Correctly sets the guess in the turn state and emits the event",async function(){
-            const {owner, joiner, MastermindGame}=await loadFixture(publicMatchStarted);
+            const {owner, joiner, MastermindGame}=await loadFixture(publicTurnHashPublished);
             const guess="BBRAV";
             if((await MastermindGame.getCodeMaker(0,0))==owner.address){
                 //The codemaker is 'owner' hence 'joiner' has to guess
@@ -485,5 +547,83 @@ describe("MastermindGame Contract", function(){
             
         })
     })
+    
+    describe("Feedback publication by the codeMaker", function(){
+        it("Should fail if the guess of the code is published by someone not partecipating in the game",async function(){
+            const {owner, joiner, MastermindGame}=await loadFixture(publicTurnHashPublished);
+            const [own, addr1, addr2]= await ethers.getSigners();
+            await expect(MastermindGame.connect(addr2).provideFeedback(0, 0, 2, 0)).to.be.revertedWithCustomError(MastermindGame,"UnauthorizedAccess").withArgs("You are not a participant of the match");
+        })
 
+        it("Should fail if the match is not started yet",async function(){
+            const {owner, joiner, MastermindGame}=await loadFixture(publicMatchCreatorDeposited);
+            await expect(MastermindGame.connect(joiner).provideFeedback(0, 0, 2, 0)).to.be.revertedWithCustomError(MastermindGame,"MatchNotStarted").withArgs(0);
+        })
+
+        it("Should fail if the matchId does not exists",async function(){
+            const {owner, joiner, MastermindGame}=await loadFixture(publicTurnHashPublished);
+            await expect(MastermindGame.provideFeedback(4, 0, 2, 0)).to.revertedWithCustomError(MastermindGame, "MatchNotFound").withArgs(4);
+        })
+
+        it("Should fail if the caller is not the codeMaker of the turn",async function(){
+            const {owner, joiner, MastermindGame}=await loadFixture(publicTurnHashPublished);
+            if((await MastermindGame.getCodeMaker(0,0))==owner.address){
+                //The codemaker is 'owner' hence it cannot guess
+                await expect(MastermindGame.connect(joiner).provideFeedback(0, 0, 2, 0)).to.be.revertedWithCustomError(MastermindGame,"UnauthorizedOperation").withArgs("You are not the codeMaker of this turn");   
+            }else{
+                //The codemaker is 'joiner' hence it cannot guess
+                await expect(MastermindGame.provideFeedback(0, 0, 2, 0)).to.be.revertedWithCustomError(MastermindGame,"UnauthorizedOperation").withArgs("You are not the codeMaker of this turn");              
+            }
+        })
+
+        it("Should fail if the feedback is invalid (ex numer of positions returned > code size)",async function(){
+            const {owner, joiner, MastermindGame}=await loadFixture(publicTurnHashPublished);
+            if((await MastermindGame.getCodeMaker(0,0))==owner.address){
+                await expect(MastermindGame.provideFeedback(0, 0, codesize+1, 0)).to.revertedWithCustomError(MastermindGame, "InvalidParameter").withArgs("correctPositions",">codeSize");
+                await expect(MastermindGame.provideFeedback(0, 0, 0, codesize+1)).to.revertedWithCustomError(MastermindGame, "InvalidParameter").withArgs("wrongPositionCorrectColors",">codeSize");
+            }else{
+                await expect(MastermindGame.connect(joiner).provideFeedback(0, 0, codesize+1, 0)).to.revertedWithCustomError(MastermindGame, "InvalidParameter").withArgs("correctPositions",">codeSize");
+                await expect(MastermindGame.connect(joiner).provideFeedback(0, 0, 0, codesize+1)).to.revertedWithCustomError(MastermindGame, "InvalidParameter").withArgs("wrongPositionCorrectColors",">codeSize");                
+            }
+        })
+
+        it("It should fail if the codeBreaker has not sent a guess",async function(){
+            const {owner, joiner, MastermindGame}=await loadFixture(publicTurnHashPublished);
+            if((await MastermindGame.getCodeMaker(0,0))==owner.address){
+                //codeMaker 'owner', codeBreaker 'joiner'
+                //Case: 0 guesses sent
+                await expect(MastermindGame.provideFeedback(0, 0, 0, 1)).to.revertedWith("The codeBreakers has not yet provided a guess!");
+                //Case: some guesses previously sent but not for the current attempt 
+                const guess="BBRAV";
+                await expect(MastermindGame.connect(joiner).guessTheCode(0, 0, guess)).not.to.be.reverted;
+                await expect(MastermindGame.provideFeedback(0, 0, 0, 3)).not.to.be.reverted;
+                await expect(MastermindGame.provideFeedback(0, 0, 0, 3)).to.be.revertedWith("Feedback already provided for this attempt, wait for another guess of the codeBreaker!");
+            }else{
+                //codeMaker 'joiner', codeBreaker 'owner'
+                //Case: 0 guesses sent
+                await expect(MastermindGame.connect(joiner).provideFeedback(0, 0, 0, 1)).to.revertedWith("The codeBreakers has not yet provided a guess!");
+                //Case: some guesses previously sent but not for the current attempt 
+                const guess="BBRAV";
+                await expect(MastermindGame.guessTheCode(0, 0, guess)).not.to.be.reverted;
+                await expect(MastermindGame.connect(joiner).provideFeedback(0, 0, 0, 3)).not.to.be.reverted;
+                await expect(MastermindGame.connect(joiner).provideFeedback(0, 0, 0, 3)).to.be.revertedWith("Feedback already provided for this attempt, wait for another guess of the codeBreaker!");
+            }
+        })
+
+        it("Correctly registers the feedback in the turn state and emits the event",async function(){
+            const {owner, joiner, MastermindGame}=await loadFixture(publicTurnHashPublished);
+            if((await MastermindGame.getCodeMaker(0,0))==owner.address){
+                //The codemaker is 'owner' hence 'joiner' has to guess
+                const guess="BBRAV";
+                await expect(MastermindGame.connect(joiner).guessTheCode(0, 0, guess)).not.to.be.reverted;
+                await expect(MastermindGame.provideFeedback(0, 0, 0, 3)).to.emit(MastermindGame,"feedbackProvided").withArgs(0, 0, 0, 0, 3);
+            }else{
+                //The codemaker is 'joiner' hence 'owner' has to guess
+                const guess="BBRAV";
+                await expect(MastermindGame.guessTheCode(0, 0, guess)).not.to.be.reverted;
+                await expect(MastermindGame.connect(joiner).provideFeedback(0, 0, 0, 3)).to.emit(MastermindGame,"feedbackProvided").withArgs(0, 0, 0, 0, 3);
+            }
+            
+        })       
+    })
 })
