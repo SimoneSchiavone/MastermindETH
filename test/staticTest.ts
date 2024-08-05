@@ -75,6 +75,55 @@ describe("MastermindGame Contract", function(){
         return { owner, joiner, MastermindGame};
     }
 
+    async function publicTurnAlmostConcluded_Guessed() {
+        const {owner, joiner, MastermindGame}=await loadFixture(publicTurnHashPublished);       
+        if((await MastermindGame.getCodeMaker(0,0))==owner.address){
+            //codeMaker 'owner', codeBreaker 'joiner'; numguesses is a constant of the contract (5)
+            await expect(MastermindGame.connect(joiner).guessTheCode(0, 0, "ARBGR")).not.to.be.reverted;
+            await expect(MastermindGame.provideFeedback(0, 0, 5, 0)).to.emit(MastermindGame,"feedbackProvided").withArgs(0, 0, 0, 5, 0).
+                and.to.emit(MastermindGame,"secretRequired").withArgs(0, 0, true, owner.address);
+            
+        }else{
+            //codeMaker 'owner', codeBreaker 'joiner'; numguesses is a constant of the contract (5)
+            await expect(MastermindGame.guessTheCode(0, 0, "ARBGR")).not.to.be.reverted;
+            await expect(MastermindGame.connect(joiner).provideFeedback(0, 0, 5, 0)).to.emit(MastermindGame,"feedbackProvided").withArgs(0, 0, 0, 5, 0).
+                and.to.emit(MastermindGame,"secretRequired").withArgs(0, 0, true, joiner.address);
+        }
+        return { owner, joiner, MastermindGame};
+    }
+
+    async function publicTurnAlmostConcluded_NotGuessed() {
+        const {owner, joiner, MastermindGame}=await loadFixture(publicTurnHashPublished);
+        if((await MastermindGame.getCodeMaker(0,0))==owner.address){
+            //codeMaker 'owner', codeBreaker 'joiner'; numguesses is a constant of the contract (5)
+            await expect(MastermindGame.connect(joiner).guessTheCode(0, 0, "BBRAV")).not.to.be.reverted;
+            await expect(MastermindGame.provideFeedback(0, 0, 0, 3)).not.to.be.reverted;
+            await expect(MastermindGame.connect(joiner).guessTheCode(0, 0, "BRAVA")).not.to.be.reverted;
+            await expect(MastermindGame.provideFeedback(0, 0, 0, 3)).not.to.be.reverted;
+            await expect(MastermindGame.connect(joiner).guessTheCode(0, 0, "BARBA")).not.to.be.reverted;
+            await expect(MastermindGame.provideFeedback(0, 0, 0, 3)).not.to.be.reverted;
+            await expect(MastermindGame.connect(joiner).guessTheCode(0, 0, "BRACC")).not.to.be.reverted;
+            await expect(MastermindGame.provideFeedback(0, 0, 1, 2)).not.to.be.reverted;
+            await expect(MastermindGame.connect(joiner).guessTheCode(0, 0, "BRACC")).not.to.be.reverted;
+            await expect(MastermindGame.provideFeedback(0, 0, 1, 2)).to.emit(MastermindGame,"feedbackProvided").withArgs(0, 0, 4, 1, 2).
+                and.to.emit(MastermindGame,"secretRequired").withArgs(0, 0, false, owner.address);
+        }else{
+            //codeMaker 'owner', codeBreaker 'joiner'; numguesses is a constant of the contract (5)
+            await expect(MastermindGame.guessTheCode(0, 0, "BBRAV")).not.to.be.reverted;
+            await expect(MastermindGame.connect(joiner).provideFeedback(0, 0, 0, 3)).not.to.be.reverted;
+            await expect(MastermindGame.guessTheCode(0, 0, "BRAVA")).not.to.be.reverted;
+            await expect(MastermindGame.connect(joiner).provideFeedback(0, 0, 0, 3)).not.to.be.reverted;
+            await expect(MastermindGame.guessTheCode(0, 0, "BARBA")).not.to.be.reverted;
+            await expect(MastermindGame.connect(joiner).provideFeedback(0, 0, 0, 3)).not.to.be.reverted;
+            await expect(MastermindGame.guessTheCode(0, 0, "BRACC")).not.to.be.reverted;
+            await expect(MastermindGame.connect(joiner).provideFeedback(0, 0, 1, 2)).not.to.be.reverted;
+            await expect(MastermindGame.guessTheCode(0, 0, "BRACC")).not.to.be.reverted;
+            await expect(MastermindGame.connect(joiner).provideFeedback(0, 0, 1, 2)).to.emit(MastermindGame,"feedbackProvided").withArgs(0, 0, 4, 1, 2).
+                and.to.emit(MastermindGame,"secretRequired").withArgs(0, 0, false, joiner.address);
+        }
+        return { owner, joiner, MastermindGame};    
+    }
+    
     describe("Contract creation", function(){
         //Check that the assignment of the value is correct in case of right parameters
         it("Constructor should initialize the game parameters", async function () {
@@ -516,8 +565,8 @@ describe("MastermindGame Contract", function(){
                 await expect(MastermindGame.connect(joiner).guessTheCode(0, 0, "BRACC")).not.to.be.reverted;
                 await expect(MastermindGame.provideFeedback(0, 0, 1, 2)).not.to.be.reverted;
                 await expect(MastermindGame.connect(joiner).guessTheCode(0, 0, "BRACC")).not.to.be.reverted;
-                await expect(MastermindGame.provideFeedback(0, 0, 1, 2)).to.emit(MastermindGame,"turnCompleted").withArgs(0, 0, owner.address);
-                await expect(MastermindGame.connect(joiner).guessTheCode(0, 0, "GRATT")).to.be.revertedWith("This turn is already finished!");
+                await expect(MastermindGame.provideFeedback(0, 0, 1, 2)).not.to.be.reverted;
+                await expect(MastermindGame.connect(joiner).guessTheCode(0, 0, "GRATT")).to.be.revertedWith("Too many attempts for this turn!");
             }else{
                 //codeMaker 'owner', codeBreaker 'joiner'; numguesses is a constant of the contract (5)
                 await expect(MastermindGame.guessTheCode(0, 0, "BBRAV")).not.to.be.reverted;
@@ -529,8 +578,8 @@ describe("MastermindGame Contract", function(){
                 await expect(MastermindGame.guessTheCode(0, 0, "BRACC")).not.to.be.reverted;
                 await expect(MastermindGame.connect(joiner).provideFeedback(0, 0, 1, 2)).not.to.be.reverted;
                 await expect(MastermindGame.guessTheCode(0, 0, "BRACC")).not.to.be.reverted;
-                await expect(MastermindGame.connect(joiner).provideFeedback(0, 0, 1, 2)).to.emit(MastermindGame,"turnCompleted").withArgs(0, 0, joiner.address);
-                await expect(MastermindGame.guessTheCode(0, 0, "GRATT")).to.be.revertedWith("This turn is already finished!");
+                await expect(MastermindGame.connect(joiner).provideFeedback(0, 0, 1, 2)).not.to.be.reverted;
+                await expect(MastermindGame.guessTheCode(0, 0, "GRATT")).to.be.revertedWith("Too many attempts for this turn!");
             }
         })
 
@@ -624,6 +673,82 @@ describe("MastermindGame Contract", function(){
                 await expect(MastermindGame.connect(joiner).provideFeedback(0, 0, 0, 3)).to.emit(MastermindGame,"feedbackProvided").withArgs(0, 0, 0, 0, 3);
             }
             
-        })       
+        })
+
+        it("Correctly emits the secret publication request in case of code guessed", async function () {
+            await loadFixture(publicTurnAlmostConcluded_Guessed);
+        })
+
+        it("Correctly emits the secret publication request in case of code not guessed", async function () {
+            await loadFixture(publicTurnAlmostConcluded_NotGuessed);
+        })
+        
+    })
+
+    describe("Secret publication by the codeMaker", function(){
+        it("Should fail if the guess of the code is published by someone not partecipating in the game",async function(){
+            const {owner, joiner, MastermindGame}=await loadFixture(publicTurnHashPublished);
+            const [own, addr1, addr2]= await ethers.getSigners();
+            await expect(MastermindGame.connect(addr2).provideSecret(0, 0, "ARBGR")).to.be.revertedWithCustomError(MastermindGame,"UnauthorizedAccess").withArgs("You are not a participant of the match");
+        })
+        
+        it("Should fail if the turn is not ended",async function(){
+            const {owner, joiner, MastermindGame}=await loadFixture(publicTurnHashPublished);
+            if((await MastermindGame.getCodeMaker(0,0))==owner.address){
+                await expect(MastermindGame.provideSecret(0, 0, "ARBGR")).to.be.revertedWithCustomError(MastermindGame,"UnauthorizedOperation").withArgs("Turn not ended");
+            }else{
+                await expect(MastermindGame.connect(joiner).provideSecret(0, 0, "ARBGR")).to.be.revertedWithCustomError(MastermindGame,"UnauthorizedOperation").withArgs("Turn not ended");
+            
+            }
+        })
+
+        it("Should fail if the secret code is invalid",async function(){
+            const {owner, joiner, MastermindGame}=await loadFixture(publicTurnHashPublished);
+            if((await MastermindGame.getCodeMaker(0,0))==owner.address){
+                await expect(MastermindGame.provideSecret(0, 0, "ARBGZ")).to.be.revertedWithCustomError(MastermindGame,"InvalidParameter").withArgs("secret","Invalid color in the code");
+            }else{
+                await expect(MastermindGame.connect(joiner).provideSecret(0, 0, "ARBGZ")).to.be.revertedWithCustomError(MastermindGame,"InvalidParameter").withArgs("secret","Invalid color in the code");
+            
+            }
+        })
+
+        it("Should fail if the secret code is empty",async function(){
+            const {owner, joiner, MastermindGame}=await loadFixture(publicTurnAlmostConcluded_Guessed);
+            if((await MastermindGame.getCodeMaker(0,0))==owner.address){
+                await expect(MastermindGame.provideSecret(0, 0, "")).to.be.revertedWithCustomError(MastermindGame,"InvalidParameter").withArgs("secret","Empty string");
+            }else{
+                await expect(MastermindGame.connect(joiner).provideSecret(0, 0, "")).to.be.revertedWithCustomError(MastermindGame,"InvalidParameter").withArgs("secret","Empty string");
+            
+            }
+        })
+        
+        it("Should detect the cheating in case of wrong secret provided",async function(){
+            const {owner, joiner, MastermindGame}=await loadFixture(publicTurnAlmostConcluded_Guessed);
+            if((await MastermindGame.getCodeMaker(0,0))==owner.address){
+                await expect(MastermindGame.provideSecret(0, 0, "BARBA")).to.emit(MastermindGame,"cheatingDetected").withArgs(0, 0, owner.address);
+            }else{
+                await expect(MastermindGame.connect(joiner).provideSecret(0, 0, "BARBA")).to.emit(MastermindGame,"cheatingDetected").withArgs(0, 0, joiner.address);
+            }
+        })
+
+        it("Should emit the correct event of turn completion in case of code guessed",async function(){
+            const {owner, joiner, MastermindGame}=await loadFixture(publicTurnAlmostConcluded_Guessed);
+            //Only 1 attempt used to guess the code of the turn 0 of match 0 --> Score 0 for the codeMaker
+            if((await MastermindGame.getCodeMaker(0,0))==owner.address){
+                await expect(MastermindGame.provideSecret(0, 0, "ARBGR")).to.emit(MastermindGame,"turnCompleted").withArgs(0, 0, 0, owner.address);
+            }else{
+                await expect(MastermindGame.connect(joiner).provideSecret(0, 0, "ARBGR")).to.emit(MastermindGame,"turnCompleted").withArgs(0, 0, 0, joiner.address);
+            }
+        })
+
+        it("Should emit the correct event of turn completion in case of code not guessed",async function(){
+            const {owner, joiner, MastermindGame}=await loadFixture(publicTurnAlmostConcluded_NotGuessed);
+            //5 attempt used by the codeBreaker who has not guessed the code --> Score 5+BONUS (5) for the codeMaker
+            if((await MastermindGame.getCodeMaker(0,0))==owner.address){
+                await expect(MastermindGame.provideSecret(0, 0, "ARBGR")).to.emit(MastermindGame,"turnCompleted").withArgs(0, 0, 10, owner.address);
+            }else{
+                await expect(MastermindGame.connect(joiner).provideSecret(0, 0, "ARBGR")).to.emit(MastermindGame,"turnCompleted").withArgs(0, 0, 10, joiner.address);
+            }
+        })
     })
 })

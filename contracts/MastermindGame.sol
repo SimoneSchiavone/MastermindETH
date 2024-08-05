@@ -18,7 +18,7 @@ contract MastermindGame {
     //Typically in the real game are used 10 colors, here they are Amber, Black, Cyan, Green, Pink, Red, Turquoise, Violet, White, Yellow
     string public availableColors="ABCGPRTVWY"; //number of colors usable in the code
     uint8 public codeSize; //size of the code
-    uint public extraReward;  //extra reward for the code maker if the code breaker is not able to guess the code.
+    uint8 public extraReward;  //extra reward for the code maker if the code breaker is not able to guess the code.
     uint8 constant NUMBER_TURNS=4;
     uint8 constant NUMBER_GUESSES=5;
 
@@ -51,7 +51,8 @@ contract MastermindGame {
         uint[] correctColorAndPosition; //reply of the codeMaker regarding a full match which is a color&position match
         uint[] correctColor; //replay of the codeMaker regarding a partial match which means color ok but wrong position
 
-        bool codeGuessed;
+        bool codeGuessed; //indicates that the code has been guessed by the codeBreaker
+        bool turnSuspended; //indicates wether the turn is sospended due to the attempt bound or by the guessing of the secret
     }
 
     mapping(uint => Match) public activeMatches; //maps an active matchId to the players addresses
@@ -70,22 +71,27 @@ contract MastermindGame {
     event secondPlayerJoined(address opponent, uint matchId); 
     //event emitted when an opponent joins a match that was waiting
     event matchStakeFixed(uint matchId, uint amount); 
-    //the event notifies that an agreement between the 2 player has been reached and it shows the amount to pay
+    //notifies that an agreement between the 2 player has been reached and it shows the amount to pay
     event matchStakeDeposited(uint matchId); 
-    //the event notifies that both player have deposited the match stake for that match
+    //notifies that both player have deposited the match stake for that match
     event matchDeleted(uint matchId); 
-    //the event notifies the deletion of that match from the active ones
-    event newTurnStarted(uint matchId, uint turnNum, address codeMaker); 
-    //the event notifies that a new turn of a match ir ready to be played and it speficies the address of the codemaker;
-    event codeHashPublished(uint matchId, uint turnNum, bytes32 digest); 
-    //the event notifies that the codeMaker has published the digest of the code hence the opponent could start to emit guesses;
-    event newGuess(uint matchId, uint turnNum, string guess); 
-    //the event notifies that a the codeBreaker of a game has proposed a solution for the code
-    event feedbackProvided(uint matchId, uint turnNum, uint attemptNum, uint corrPos, uint wrongPosCorrCol);
-    //the event notifies that the codeMaker has provided its feedback regarding the guess number 'attemptnum' of that turn of the match;
-    event turnCompleted(uint matchId, uint turnNum, address winner);
-    //notifies that a turn of a match is completed with the victory of that player
-
+    //notifies the deletion of that match from the active ones
+    event newTurnStarted(uint matchId, uint8 turnNum, address codeMaker); 
+    //notifies that a new turn of a match ir ready to be played and it speficies the address of the codemaker;
+    event codeHashPublished(uint matchId, uint8 turnNum, bytes32 digest); 
+    //notifies that the codeMaker has published the digest of the code hence the opponent could start to emit guesses;
+    event newGuess(uint matchId, uint8 turnNum, string guess); 
+    //notifies that a the codeBreaker of a game has proposed a solution for the code
+    event feedbackProvided(uint matchId, uint8 turnNum, uint8 attemptNum, uint8 corrPos, uint8 wrongPosCorrCol);
+    //notifies that the codeMaker has provided its feedback regarding the guess number 'attemptnum' of that turn of the match;
+    event secretRequired(uint matchId, uint8 turnId, bool codeGuesses, address codeMaker);
+    //notifies the codemaker that the turn is going to end so he has to provide the original code
+    event turnCompleted(uint matchId, uint8 turnNum, uint8 points, address who);
+    //notifies that a turn of a match is completed with the assignment of those points to that player
+    event matchCompleted(uint matchId, address winner);
+    //notifies the completion of a match and indicates the winner of that match. Winner==address(0) represents the case of a tie.
+    event cheatingDetected(uint matchId, uint turnId, address who);
+    //notifies that a player had a dishonest behavior hence punishment is performed
     //----------ERRORS----------
     error InvalidParameter(string which, string reason);
     error MatchNotFound(uint matchId);
@@ -99,7 +105,7 @@ contract MastermindGame {
      * @param _codeSize code size
      * @param _noGuessedReward extra reward for the code maker
      */
-    constructor( uint8 _codeSize, uint _noGuessedReward){
+    constructor( uint8 _codeSize, uint8 _noGuessedReward){
         //require(_availableColors.length==10,"The number of available colors should be 10!");
         require(_codeSize!=0,"The code size should be greater than 1!");
         require(_noGuessedReward!=0,"The extra reward for the code maker has to be greater than 0!");
@@ -343,14 +349,14 @@ contract MastermindGame {
      * the stake payment from both the game participant.
      * @param matchId id of the match to initialize
      */
-    function initializeTurn(uint matchId, uint8 turnNo) private{
-        require(turnNo<NUMBER_TURNS,"Number of turns bound exceeded!");
+    function initializeTurn(uint matchId, uint8 turnId) private{
+        require(turnId<NUMBER_TURNS,"Number of turns bound exceeded!");
         //no further checks on matchId since this function is invoked from other "safe" functions
         Match storage m=activeMatches[matchId]; 
         
         address _codeMaker;
         //codeMaker selection
-        if(turnNo==0){ //first turn
+        if(turnId==0){ //first turn
             if(uint8(Utils.randNo(2))==0){
                 _codeMaker=m.player1;
             }else{
@@ -358,7 +364,7 @@ contract MastermindGame {
             }
         }else{
             //swap the roles
-            if(m.turns[turnNo-1].codeMaker==m.player2){
+            if(m.turns[turnId-1].codeMaker==m.player2){
                 _codeMaker=m.player1;
             }else{
                 _codeMaker=m.player2;
@@ -368,11 +374,11 @@ contract MastermindGame {
         //New turn creation and insertion in the associated match
         uint[] memory whatever; //empty array
         string[] memory _whatever;
-        Turn memory t= Turn({turnNo: turnNo,codeMaker: _codeMaker, codeHash: 0,codeProposals: _whatever,correctColorAndPosition: whatever,correctColor: whatever, codeGuessed: false});
+        Turn memory t= Turn({turnNo: turnId,codeMaker: _codeMaker, codeHash: 0,codeProposals: _whatever,correctColorAndPosition: whatever,correctColor: whatever, codeGuessed: false, turnSuspended: false});
         m.turns.push(t);
         
         //Notifies the completion of this phase and request the codeMaker to start this turn
-        emit newTurnStarted(matchId, turnNo, t.codeMaker);
+        emit newTurnStarted(matchId, turnId, t.codeMaker);
     }
 
     //----------TURN ACTIONS----------
@@ -385,7 +391,7 @@ contract MastermindGame {
      * @param turnId id of the current turn
      * @param codeDigest digest of the code produced by the codeMaker
      */
-    function publishCodeHash(uint matchId, uint turnId, bytes32 codeDigest) onlyMatchPartecipant(matchId) onlyCodeMaker(matchId, turnId) public{ 
+    function publishCodeHash(uint matchId, uint8 turnId, bytes32 codeDigest) onlyMatchPartecipant(matchId) onlyCodeMaker(matchId, turnId) public{ 
         //The checks regarding the match/turn ids are performed by the modifier
         //Check that this turn is not already finished.
         require((activeMatches[matchId].turns.length)-1==turnId,"This turn is already finished!");
@@ -406,14 +412,14 @@ contract MastermindGame {
      * @param turnId id of the turn of that march
      * @param codeProponed attempt of finding the code by the codeBreaker
      */
-    function guessTheCode(uint matchId, uint turnId, string memory codeProponed) onlyMatchPartecipant(matchId) onlyCodeBreaker(matchId, turnId) public{ 
+    function guessTheCode(uint matchId, uint8 turnId, string memory codeProponed) onlyMatchPartecipant(matchId) onlyCodeBreaker(matchId, turnId) public{ 
         //The checks regarding the match/turn ids are performed by the modifier
         //Check that this turn is not already finished.
         require((activeMatches[matchId].turns.length)-1==turnId,"This turn is already finished!");
 
         Turn storage t=activeMatches[matchId].turns[turnId]; //actual turn
         //CONTROLLO NON NECESSARIO PERCHè' ALL'ULTIMO TENTATIVO IL TURNO TERMINA
-        //require(t.codeProposals.length<NUMBER_GUESSES,"Too many attempts for this turn!");
+        require(t.codeProposals.length<NUMBER_GUESSES,"Too many attempts for this turn!");
         require((t.codeProposals.length==t.correctColor.length)&&(t.codeProposals.length==t.correctColorAndPosition.length),"You need to wait the feedback from the codeMaker regarding the last code you have proposed!");
 
         //We assume that the string received by the contract is like "BCRTA", where each char represents one of the colors available in this game
@@ -433,7 +439,7 @@ contract MastermindGame {
      * @param corrPos number of correct positions, which means also correct code
      * @param wrongPosCorrCol number of wrong positions but right colors
      */
-    function provideFeedback(uint matchId, uint8 turnId, uint corrPos, uint wrongPosCorrCol) onlyMatchPartecipant(matchId) onlyCodeMaker(matchId, turnId) public{
+    function provideFeedback(uint matchId, uint8 turnId, uint8 corrPos, uint8 wrongPosCorrCol) onlyMatchPartecipant(matchId) onlyCodeMaker(matchId, turnId) public{
         //The checks regarding the match/turn ids are performed by the modifier
         //Check that this turn is not already finished.
         require((activeMatches[matchId].turns.length)-1==turnId,"This turn is already finished!");
@@ -451,38 +457,103 @@ contract MastermindGame {
         t.correctColorAndPosition.push(corrPos);
         t.correctColor.push(wrongPosCorrCol);
 
-        emit feedbackProvided(matchId, turnId, t.codeProposals.length-1, corrPos, wrongPosCorrCol);
+        emit feedbackProvided(matchId, turnId, uint8(t.codeProposals.length-1), corrPos, wrongPosCorrCol);
 
         //Manages the situations which cause the ending of the turn
         if(corrPos==codeSize){ //CodeBreaker has won the turn because it has guessed the hidden code!
             t.codeGuessed=true;
-            endTurn(matchId, turnId, getCodeBreaker(matchId, turnId));
+            t.turnSuspended=true;
+            emit secretRequired(matchId, turnId, true,t.codeMaker);
         }
         if(t.codeProposals.length==NUMBER_GUESSES){ //CodeMaker has won the turn because the codeBreaker has exhausted its attempts
-            endTurn(matchId, turnId, t.codeMaker);
+            t.turnSuspended=true;
+            emit secretRequired(matchId, turnId,false, t.codeMaker);
         }
     }
 
-    function endTurn(uint matchId, uint8 turnId, address winner) private{
-        Match storage m=activeMatches[matchId];
+    //----------TURN CONCLUSION----------
+    /**
+     * Function invoked by the codeMaker in order to prove that he has not changed the secret code during the
+     * game. If the check passes then the function determines the points scored by the codeMaker of that turn.
+     * If the codeMaker behaves unsportmanlike then it put into effect the punishment policy. 
+     * @param matchId id of the match
+     * @param turnId  id of the turn
+     * @param secret code decided by the codeMaker at the beginning of the turn
+     */
+    function provideSecret(uint matchId, uint8 turnId, string memory secret) onlyMatchPartecipant(matchId) onlyCodeMaker(matchId, turnId) public{
+        if(bytes(secret).length==0){
+            revert InvalidParameter("secret","Empty string");
+        }
 
-        console.log("TURNO FINITO CON VITTORIA DI %s",winner);
-        if(winner==m.player1){
-            m.score1++;
-        }else{
-            m.score2++;
+        if(!Utils.containsCharsOf(availableColors, secret))
+            revert InvalidParameter("secret","Invalid color in the code");
+
+        Turn storage t=activeMatches[matchId].turns[turnId];
+        if(!t.turnSuspended){
+            revert UnauthorizedOperation("Turn not ended");
         }
         
-        emit turnCompleted(matchId, turnId, winner);
+        string memory hashSecretProvided=string(abi.encodePacked(keccak256(bytes(secret))));
+        if(!Utils.strcmp(hashSecretProvided, string(abi.encodePacked(t.codeHash)))){
+            //TODO: IMPLEMENT THE PUNISHMENT POLICY  
+            emit cheatingDetected(matchId, turnId, t.codeMaker);
+        }
 
+        //Manages the situations which cause the ending of the turn
+        if(t.correctColorAndPosition[(t.codeProposals.length)-1]==codeSize){ //Turn suspended because the codeBraker has guessed the hidden code!
+            t.codeGuessed=true;
+            //The points earned are the number of failed attempts hence subtract1
+            endTurn(matchId, turnId, uint8(t.codeProposals.length-1));
+        }
+        if(t.codeProposals.length==NUMBER_GUESSES){ //Turn suspended because the bounds on the attempts has been reached!
+            endTurn(matchId, turnId, uint8(t.codeProposals.length));
+        }
+    }
+
+    /**
+     * Private function which has the role of manage the ending of a turn hence assigning the searned
+     * points to the codeMaker of that turn and emit the event of turn completion. 
+     * @param matchId id of the match
+     * @param turnId  id of the turn
+     * @param attempts number of guesses posed by the codeBreaker in the turn just completed
+     */
+    function endTurn(uint matchId, uint8 turnId, uint8 attempts) private{
+        Match storage m=activeMatches[matchId];
+        Turn storage t=m.turns[turnId];
+        uint8 earned=attempts;
+        if(!t.codeGuessed)
+            earned+=extraReward;
+        if(t.codeMaker==m.player1){
+            m.score1+=earned;
+        }else{
+            m.score2+=earned;
+        }
+        emit turnCompleted(matchId, turnId, earned, t.codeMaker);
+
+        /*
         if(m.turns.length<NUMBER_TURNS){ //Turn bound not reached, start another game
             initializeTurn(matchId, turnId+1);
         }else{ //Turn bound reached, close the match
             //endMatch();
-        }
+        }*/
     }
+    
+    function endMatch(uint matchId, uint8 turnId) private {
+        Match storage m=activeMatches[matchId];
 
-    //function endMatch()
+        //Decide the winner of the match
+        if(m.score1==m.score2){ //tie
+            emit matchCompleted(matchId, address(0));
+        }else{
+            if(m.score1<m.score2){
+                emit matchCompleted(matchId, m.player1);
+            }else{
+                emit matchCompleted(matchId, m.player2);
+            }
+        }
+
+        //C'è già Drop The Match per chiudere tutto
+    }
     //----------UTILITIES AND MODIFIERS----------
     /**
      * @notice This function removes the element in position "target" from
@@ -566,9 +637,9 @@ contract MastermindGame {
         if(activeMatches[matchId].turns.length==0)
             revert MatchNotStarted(matchId);
         if(activeMatches[matchId].player1==activeMatches[matchId].turns[turnId].codeMaker){
-            return activeMatches[matchId].player1;
-        }else{
             return activeMatches[matchId].player2;
+        }else{
+            return activeMatches[matchId].player1;
         }
     }
 }
