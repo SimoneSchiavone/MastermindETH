@@ -259,7 +259,7 @@ describe("MastermindGame Contract", function(){
             
                 const [own, addr1]= await ethers.getSigners();
                 //Match id will be 0 for the fist one created
-                await expect(MastermindGame.connect(addr1).setStakeValue(0,50)).to.revertedWith("Only the creator of that match can perform this operation!");
+                await expect(MastermindGame.connect(addr1).setStakeValue(0,50)).to.revertedWithCustomError(MastermindGame,"UnauthorizedAccess").withArgs("You are not the creator of the match");
             })
             it("Should fail if the match stake is <=0", async function () {
                 const {owner, MastermindGame}=await loadFixture(publicMatchCreated);
@@ -516,8 +516,8 @@ describe("MastermindGame Contract", function(){
                 await expect(MastermindGame.connect(joiner).guessTheCode(0, 0, "BRACC")).not.to.be.reverted;
                 await expect(MastermindGame.provideFeedback(0, 0, 1, 2)).not.to.be.reverted;
                 await expect(MastermindGame.connect(joiner).guessTheCode(0, 0, "BRACC")).not.to.be.reverted;
-                await expect(MastermindGame.provideFeedback(0, 0, 1, 2)).not.to.be.reverted;
-                await expect(MastermindGame.connect(joiner).guessTheCode(0, 0, "GRATT")).to.be.revertedWith("Too many attempts for this turn!");
+                await expect(MastermindGame.provideFeedback(0, 0, 1, 2)).to.emit(MastermindGame,"turnCompleted").withArgs(0, 0, owner.address);
+                await expect(MastermindGame.connect(joiner).guessTheCode(0, 0, "GRATT")).to.be.revertedWith("This turn is already finished!");
             }else{
                 //codeMaker 'owner', codeBreaker 'joiner'; numguesses is a constant of the contract (5)
                 await expect(MastermindGame.guessTheCode(0, 0, "BBRAV")).not.to.be.reverted;
@@ -529,8 +529,8 @@ describe("MastermindGame Contract", function(){
                 await expect(MastermindGame.guessTheCode(0, 0, "BRACC")).not.to.be.reverted;
                 await expect(MastermindGame.connect(joiner).provideFeedback(0, 0, 1, 2)).not.to.be.reverted;
                 await expect(MastermindGame.guessTheCode(0, 0, "BRACC")).not.to.be.reverted;
-                await expect(MastermindGame.connect(joiner).provideFeedback(0, 0, 1, 2)).not.to.be.reverted;
-                await expect(MastermindGame.guessTheCode(0, 0, "GRATT")).to.be.revertedWith("Too many attempts for this turn!");
+                await expect(MastermindGame.connect(joiner).provideFeedback(0, 0, 1, 2)).to.emit(MastermindGame,"turnCompleted").withArgs(0, 0, joiner.address);
+                await expect(MastermindGame.guessTheCode(0, 0, "GRATT")).to.be.revertedWith("This turn is already finished!");
             }
         })
 

@@ -64,7 +64,7 @@ contract MastermindGame {
     uint private nextMatchId=0; //matchId generation
 
 
-    //---EVENTS---
+    //----------EVENTS----------
     event newMatchCreated(address creator, uint newMatchId); 
     //event emitted when a new match is created
     event secondPlayerJoined(address opponent, uint matchId); 
@@ -86,12 +86,14 @@ contract MastermindGame {
     event turnCompleted(uint matchId, uint turnNum, address winner);
     //notifies that a turn of a match is completed with the victory of that player
 
+    //----------ERRORS----------
     error InvalidParameter(string which, string reason);
     error MatchNotFound(uint matchId);
     error DuplicateOperation(string reason);
     error UnauthorizedAccess(string conditionViolated);
     error UnauthorizedOperation(string conditionViolated);
     error MatchNotStarted(uint matchId);
+
     /**
      * @notice Constructor function of the contract
      * @param _codeSize code size
@@ -410,7 +412,8 @@ contract MastermindGame {
         require((activeMatches[matchId].turns.length)-1==turnId,"This turn is already finished!");
 
         Turn storage t=activeMatches[matchId].turns[turnId]; //actual turn
-        require(t.codeProposals.length<NUMBER_GUESSES,"Too many attempts for this turn!");
+        //CONTROLLO NON NECESSARIO PERCHè' ALL'ULTIMO TENTATIVO IL TURNO TERMINA
+        //require(t.codeProposals.length<NUMBER_GUESSES,"Too many attempts for this turn!");
         require((t.codeProposals.length==t.correctColor.length)&&(t.codeProposals.length==t.correctColorAndPosition.length),"You need to wait the feedback from the codeMaker regarding the last code you have proposed!");
 
         //We assume that the string received by the contract is like "BCRTA", where each char represents one of the colors available in this game
@@ -430,7 +433,7 @@ contract MastermindGame {
      * @param corrPos number of correct positions, which means also correct code
      * @param wrongPosCorrCol number of wrong positions but right colors
      */
-    function provideFeedback(uint matchId, uint turnId, uint corrPos, uint wrongPosCorrCol) onlyMatchPartecipant(matchId) onlyCodeMaker(matchId, turnId) public{
+    function provideFeedback(uint matchId, uint8 turnId, uint corrPos, uint wrongPosCorrCol) onlyMatchPartecipant(matchId) onlyCodeMaker(matchId, turnId) public{
         //The checks regarding the match/turn ids are performed by the modifier
         //Check that this turn is not already finished.
         require((activeMatches[matchId].turns.length)-1==turnId,"This turn is already finished!");
@@ -456,15 +459,30 @@ contract MastermindGame {
             endTurn(matchId, turnId, getCodeBreaker(matchId, turnId));
         }
         if(t.codeProposals.length==NUMBER_GUESSES){ //CodeMaker has won the turn because the codeBreaker has exhausted its attempts
-            endTurn(matchId, turnId, getCodeBreaker(matchId, turnId));
+            endTurn(matchId, turnId, t.codeMaker);
         }
     }
 
-    function endTurn(uint matchId, uint turnId, address winner) private{
+    function endTurn(uint matchId, uint8 turnId, address winner) private{
+        Match storage m=activeMatches[matchId];
+
         console.log("TURNO FINITO CON VITTORIA DI %s",winner);
-        //impostare il vincitore, assegnare il punteggio, avviare un nuovo turno
-        //Turn storage t=activeMatches[matchId].turns[turnId]; //actual turn
+        if(winner==m.player1){
+            m.score1++;
+        }else{
+            m.score2++;
+        }
+        
+        emit turnCompleted(matchId, turnId, winner);
+
+        if(m.turns.length<NUMBER_TURNS){ //Turn bound not reached, start another game
+            initializeTurn(matchId, turnId+1);
+        }else{ //Turn bound reached, close the match
+            //endMatch();
+        }
     }
+
+    //function endMatch()
     //----------UTILITIES AND MODIFIERS----------
     /**
      * @notice This function removes the element in position "target" from
@@ -484,7 +502,8 @@ contract MastermindGame {
     modifier onlyMatchCreator(uint matchId) {
         if(activeMatches[matchId].player1==address(0))
             revert MatchNotFound(matchId);
-        require(activeMatches[matchId].player1==msg.sender,"Only the creator of that match can perform this operation!");
+        if(activeMatches[matchId].player1!=msg.sender)
+            revert UnauthorizedAccess("You are not the creator of the match");
         _;
     }
 
@@ -493,7 +512,6 @@ contract MastermindGame {
             revert MatchNotFound(matchId);
         if((activeMatches[matchId].player1!=msg.sender)&&(activeMatches[matchId].player2!=msg.sender))
             revert UnauthorizedAccess("You are not a participant of the match");
-        require((activeMatches[matchId].player1==msg.sender)||(activeMatches[matchId].player2==msg.sender),"You are not participating to this match!");
         _;
     }
 
