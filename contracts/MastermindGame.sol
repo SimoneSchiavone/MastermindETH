@@ -4,6 +4,7 @@ pragma solidity ^0.8.24;
 // Uncomment this line to use console.log
 import "hardhat/console.sol";
 import "./Utils.sol";
+import "./GameUtils.sol";
 
 /**
  * @title Mastermind Game Contract
@@ -23,7 +24,8 @@ contract MastermindGame {
     uint8 constant NUMBER_GUESSES=5;
 
     //---DEADLINES---
-    uint public constant STAKEPAYMENTDEADLINE = 25; //25 blocks, about 5 minutes
+    uint8 public constant STAKEPAYMENTDEADLINE = 25; //25 blocks, about 5 minutes
+    uint8 public constant DISPUTEWINDOWLENGHT= 10; //10 blocks, about 2 minutes
 
     
 
@@ -54,7 +56,7 @@ contract MastermindGame {
 
         bool codeGuessed; //indicates that the code has been guessed by the codeBreaker
         bool turnSuspended; //indicates wether the turn is sospended due to the attempt bound or by the guessing of the secret
-        uint suspensionTimestamp; //timestamp when the turn has been suspended due to a guess or attempts limit.
+        uint disputeWindowOpening; //blocktime of the block in which the dispute window is opened.
     }
 
     mapping(uint => Match) public activeMatches; //maps an active matchId to the players addresses
@@ -65,42 +67,6 @@ contract MastermindGame {
 
     uint activeMatchesNum=0; //counts active matches
     uint private nextMatchId=0; //matchId generation
-
-
-    //----------EVENTS----------
-    event newMatchCreated(address creator, uint newMatchId); 
-    //event emitted when a new match is created
-    event secondPlayerJoined(address opponent, uint matchId); 
-    //event emitted when an opponent joins a match that was waiting
-    event matchStakeFixed(uint matchId, uint amount); 
-    //notifies that an agreement between the 2 player has been reached and it shows the amount to pay
-    event matchStakeDeposited(uint matchId); 
-    //notifies that both player have deposited the match stake for that match
-    event matchDeleted(uint matchId); 
-    //notifies the deletion of that match from the active ones
-    event newTurnStarted(uint matchId, uint8 turnNum, address codeMaker); 
-    //notifies that a new turn of a match ir ready to be played and it speficies the address of the codemaker;
-    event codeHashPublished(uint matchId, uint8 turnNum, bytes32 digest); 
-    //notifies that the codeMaker has published the digest of the code hence the opponent could start to emit guesses;
-    event newGuess(uint matchId, uint8 turnNum, string guess); 
-    //notifies that a the codeBreaker of a game has proposed a solution for the code
-    event feedbackProvided(uint matchId, uint8 turnNum, uint8 attemptNum, uint8 corrPos, uint8 wrongPosCorrCol);
-    //notifies that the codeMaker has provided its feedback regarding the guess number 'attemptnum' of that turn of the match;
-    event secretRequired(uint matchId, uint8 turnId, bool codeGuesses, address codeMaker);
-    //notifies the codemaker that the turn is going to end so he has to provide the original code
-    event turnCompleted(uint matchId, uint8 turnNum, uint8 points, address who);
-    //notifies that a turn of a match is completed with the assignment of those points to that player
-    event matchCompleted(uint matchId, address winner);
-    //notifies the completion of a match and indicates the winner of that match. Winner==address(0) represents the case of a tie.
-    event cheatingDetected(uint matchId, uint turnId, address who);
-    //notifies that a player had a dishonest behavior hence punishment is performed
-    //----------ERRORS----------
-    error InvalidParameter(string which, string reason);
-    error MatchNotFound(uint matchId);
-    error DuplicateOperation(string reason);
-    error UnauthorizedAccess(string conditionViolated);
-    error UnauthorizedOperation(string conditionViolated);
-    error MatchNotStarted(uint matchId);
 
     /**
      * @notice Constructor function of the contract
@@ -143,7 +109,7 @@ contract MastermindGame {
         //activeMatches[nextMatchId]=newMatch;
         publicMatchesWaitingForAnOpponent.push(nextMatchId);
 
-        emit newMatchCreated(newMatch.player1,(nextMatchId));
+        emit GameUtils.newMatchCreated(newMatch.player1,(nextMatchId));
         
         nextMatchId++; //counter for the next new matchId
         activeMatchesNum++; //counter for the current active matches
@@ -157,10 +123,10 @@ contract MastermindGame {
      */ 
     function createPrivateMatch(address opponent) public returns (uint matchId) {
         if(opponent==address(0))
-            revert InvalidParameter("opponent","=0");
+            revert GameUtils.InvalidParameter("opponent","=0");
  
         if(opponent==msg.sender)
-            revert InvalidParameter("opponent","opponent==yourself");
+            revert GameUtils.InvalidParameter("opponent","opponent==yourself");
 
         //Initialize a new match
         Match storage newMatch=activeMatches[nextMatchId];
@@ -169,7 +135,7 @@ contract MastermindGame {
 
         privateMatchesWaitingForAnOpponent.push(nextMatchId);
 
-        emit newMatchCreated(newMatch.player1,(nextMatchId));
+        emit GameUtils.newMatchCreated(newMatch.player1,(nextMatchId));
         
         nextMatchId++; //counter for the next new matchId
         activeMatchesNum++; //counter for the current active matches
@@ -184,7 +150,7 @@ contract MastermindGame {
      */
     function getMatchCreator(uint matchId) public view returns (address){
         if(activeMatches[matchId].player1==address(0))
-            revert MatchNotFound(matchId);
+            revert GameUtils.MatchNotFound(matchId);
         return activeMatches[matchId].player1;
     }
 
@@ -197,7 +163,7 @@ contract MastermindGame {
      */
     function getSecondPlayer(uint matchId) public view returns (address){
         if(activeMatches[matchId].player1==address(0))
-            revert MatchNotFound(matchId);
+            revert GameUtils.MatchNotFound(matchId);
         require(activeMatches[matchId].player2!=address(0),"This game is waiting for an opponent!"); 
         return activeMatches[matchId].player2;
     }
@@ -211,24 +177,24 @@ contract MastermindGame {
      */
     function joinMatchWithId(uint matchId) public{
         if(activeMatches[matchId].player1==address(0))
-            revert MatchNotFound(matchId);
+            revert GameUtils.MatchNotFound(matchId);
         if(activeMatches[matchId].player1==msg.sender)
-            revert UnauthorizedAccess("You cannot join a match you have created");
+            revert GameUtils.UnauthorizedAccess("You cannot join a match you have created");
         Match storage m=activeMatches[matchId];
         if(m.player2!=address(0)){ //second address not "null"
             if(Utils.uintArrayContains(privateMatchesWaitingForAnOpponent, matchId)){ //second address specified but user not arealdy joined
                 //check that I'm the authorized opponent
                 if(m.player2!=msg.sender)
-                    revert UnauthorizedAccess("You cannot join this private match");
+                    revert GameUtils.UnauthorizedAccess("You cannot join this private match");
 
                 m.player2=msg.sender; //add the second player
 
                 uint idToDelete=Utils.uintArrayFind(privateMatchesWaitingForAnOpponent, matchId); //index in the array of the completed match
                 popByIndex(privateMatchesWaitingForAnOpponent,idToDelete); //this match is no more in waiting status
 
-                emit secondPlayerJoined(msg.sender, matchId);
+                emit GameUtils.secondPlayerJoined(msg.sender, matchId);
             }else{ //second address is specified and that match is not in the list of the available ones
-                revert UnauthorizedAccess("Full match");
+                revert GameUtils.UnauthorizedAccess("Full match");
             }
         }else{ //blank second address means that everyone can join this game
                 m.player2=msg.sender; //add the second player
@@ -236,7 +202,7 @@ contract MastermindGame {
                 uint idToDelete=Utils.uintArrayFind(publicMatchesWaitingForAnOpponent, matchId); //index in the array of the completed match
                 popByIndex(publicMatchesWaitingForAnOpponent,idToDelete); //this match is no more in waiting status
 
-                emit secondPlayerJoined(msg.sender, matchId);
+                emit GameUtils.secondPlayerJoined(msg.sender, matchId);
         }
     }
 
@@ -252,7 +218,7 @@ contract MastermindGame {
 
         //the matches in publicMatchesWaitingForAnOpponent will have a blanbk field "player2" by construction!
         if(activeMatches[id].player1==msg.sender)
-            revert UnauthorizedAccess("You cannot join a match you have created");
+            revert GameUtils.UnauthorizedAccess("You cannot join a match you have created");
         //it may happen that player1 creates a public match, then he decides to join another game but the "random" procedure
         //provides the id of the same match he has created.
         
@@ -260,7 +226,7 @@ contract MastermindGame {
         uint idToDelete=Utils.uintArrayFind(publicMatchesWaitingForAnOpponent,id); //index in the array of the completed match
         popByIndex(publicMatchesWaitingForAnOpponent,idToDelete); //this match is no more in waiting status
     
-        emit secondPlayerJoined(msg.sender, id);
+        emit GameUtils.secondPlayerJoined(msg.sender, id);
     }
 
     //----------MATCH STAKE NEGOTIATION PHASE----------
@@ -275,9 +241,9 @@ contract MastermindGame {
      */
     function setStakeValue(uint matchId, uint value) onlyMatchCreator(matchId) public{
         if(value==0)
-            revert InvalidParameter("stakeValue","=0");
+            revert GameUtils.InvalidParameter("stakeValue","=0");
         if(activeMatches[matchId].stake!=0)
-            revert DuplicateOperation("Stake already fixed for that match");
+            revert GameUtils.DuplicateOperation("Stake already fixed for that match");
 
         Match storage m=activeMatches[matchId];
         m.stake=value;
@@ -292,26 +258,26 @@ contract MastermindGame {
      */
     function depositStake(uint matchId) onlyMatchPartecipant(matchId) payable public{
         if(msg.value==0)
-            revert InvalidParameter("WEI sent","=0");
+            revert GameUtils.InvalidParameter("WEI sent","=0");
         if(msg.value!=activeMatches[matchId].stake)
-            revert InvalidParameter("WEI sent","!= agreed stake");
+            revert GameUtils.InvalidParameter("WEI sent","!= agreed stake");
         Match storage m=activeMatches[matchId];
         if(msg.sender==m.player1){
             if(!m.deposit1){
                 m.deposit1=true;
             }else{
-                revert DuplicateOperation("WEI already sent");
+                revert GameUtils.DuplicateOperation("WEI already sent");
             }
         }
         else{
             if(!m.deposit2){
                 m.deposit2=true;
             }else{
-                revert DuplicateOperation("WEI already sent");
+                revert GameUtils.DuplicateOperation("WEI already sent");
             }
         }
         
-        emit matchStakeDeposited(matchId);
+        emit GameUtils.matchStakeDeposited(matchId);
         //If both players have put in stake the right amount of wei the match can start so emit an event
         if(m.deposit1&&m.deposit2)
             initializeTurn(matchId,0);
@@ -326,7 +292,7 @@ contract MastermindGame {
     function requestRefundMatchStake(uint matchId) onlyMatchPartecipant(matchId) public {
         Match storage m=activeMatches[matchId];
         if(activeMatches[matchId].player1==address(0))
-            revert MatchNotFound(matchId);
+            revert GameUtils.MatchNotFound(matchId);
         require((!m.deposit1)||(!m.deposit2),"Both players have put their funds in stake!");
 
         //The caller has to have done the payment before, otherwise cannot request the refund
@@ -376,11 +342,11 @@ contract MastermindGame {
         //New turn creation and insertion in the associated match
         uint[] memory whatever; //empty array
         string[] memory _whatever;
-        Turn memory t= Turn({turnNo: turnId,codeMaker: _codeMaker, codeHash: 0,codeProposals: _whatever,correctColorAndPosition: whatever,correctColor: whatever, codeGuessed: false, turnSuspended: false, suspensionTimestamp: 0});
+        Turn memory t= Turn({turnNo: turnId,codeMaker: _codeMaker, codeHash: 0,codeProposals: _whatever,correctColorAndPosition: whatever,correctColor: whatever, codeGuessed: false, turnSuspended: false, disputeWindowOpening: 0});
         m.turns.push(t);
         
         //Notifies the completion of this phase and request the codeMaker to start this turn
-        emit newTurnStarted(matchId, turnId, t.codeMaker);
+        emit GameUtils.newTurnStarted(matchId, turnId, t.codeMaker);
     }
 
     //----------TURN ACTIONS----------
@@ -398,11 +364,11 @@ contract MastermindGame {
         //Check that this turn is not already finished.
         require((activeMatches[matchId].turns.length)-1==turnId,"This turn is already finished!");
         if(activeMatches[matchId].turns[turnId].codeHash!=0)
-            revert DuplicateOperation("Secret code digest published");
+            revert GameUtils.DuplicateOperation("Secret code digest published");
         
         //PENSA SE FAR PARTIRE IL PUNISHMENT GIA' QUI
         activeMatches[matchId].turns[turnId].codeHash=codeDigest;
-        emit codeHashPublished(matchId, turnId, codeDigest);
+        emit GameUtils.codeHashPublished(matchId, turnId, codeDigest);
     }
     
     /**
@@ -427,10 +393,10 @@ contract MastermindGame {
         //We assume that the string received by the contract is like "BCRTA", where each char represents one of the colors available in this game
         //Before pushing in the array of code proposed check its correctness
         if(!Utils.containsCharsOf(availableColors,codeProponed))
-            revert InvalidParameter("codeProponed","Invalid color in the code");
+            revert GameUtils.InvalidParameter("codeProponed","Invalid color in the code");
      
         t.codeProposals.push(codeProponed);
-        emit newGuess(matchId, turnId, codeProponed);
+        emit GameUtils.newGuess(matchId, turnId, codeProponed);
     }
 
     /**
@@ -446,9 +412,9 @@ contract MastermindGame {
         //Check that this turn is not already finished.
         require((activeMatches[matchId].turns.length)-1==turnId,"This turn is already finished!");
         if(corrPos>codeSize)
-            revert InvalidParameter("correctPositions",">codeSize");
+            revert GameUtils.InvalidParameter("correctPositions",">codeSize");
         if(wrongPosCorrCol>codeSize)
-            revert InvalidParameter("wrongPositionCorrectColors",">codeSize");
+            revert GameUtils.InvalidParameter("wrongPositionCorrectColors",">codeSize");
         
         Turn storage t=activeMatches[matchId].turns[turnId]; //actual turn
         uint attemptNum=t.codeProposals.length;
@@ -459,21 +425,36 @@ contract MastermindGame {
         t.correctColorAndPosition.push(corrPos);
         t.correctColor.push(wrongPosCorrCol);
 
-        emit feedbackProvided(matchId, turnId, uint8(t.codeProposals.length-1), corrPos, wrongPosCorrCol);
+        emit GameUtils.feedbackProvided(matchId, turnId, uint8(t.codeProposals.length-1), corrPos, wrongPosCorrCol);
 
         //Manages the situations which cause the ending of the turn
         if(corrPos==codeSize){ //CodeBreaker has won the turn because it has guessed the hidden code!
             t.codeGuessed=true;
             t.turnSuspended=true;
-            emit secretRequired(matchId, turnId, true,t.codeMaker);
+            emit GameUtils.secretRequired(matchId, turnId, true,t.codeMaker);
         }
         if(t.codeProposals.length==NUMBER_GUESSES){ //CodeMaker has won the turn because the codeBreaker has exhausted its attempts
             t.turnSuspended=true;
-            emit secretRequired(matchId, turnId,false, t.codeMaker);
+            emit GameUtils.secretRequired(matchId, turnId,false, t.codeMaker);
         }
     }
 
+    /**
+     * Function invoked by the codeBreaker of the turn in order to report the fact that, in its opinion, the
+     * codeMaker has provided a wrong feedback for one of its guesses. If the dispute will be accepted by the
+     * contract the codeMaker will be punished accordingly to the policies implemented, otherwise the punishment
+     * will be done on the issuer.
+     * @param matchId id of the match reported
+     * @param turnId id of the turn reported
+     * @param feedbackNum number of the feedback reported (starting from 0)
+     */
     function openDispute(uint matchId, uint8 turnId, uint8 feedbackNum) public onlyMatchPartecipant(matchId) onlyCodeBreaker(matchId, turnId){
+        Turn storage t=activeMatches[matchId].turns[turnId];
+        if(!t.turnSuspended)
+            revert GameUtils.UnauthorizedOperation("Turn not ended");
+        if(feedbackNum>=t.codeProposals.length)
+            revert GameUtils.InvalidParameter("feedbackNum",">#guesses emitted");
+        
 
     }
     //----------TURN CONCLUSION----------
@@ -487,23 +468,27 @@ contract MastermindGame {
      */
     function provideSecret(uint matchId, uint8 turnId, string memory secret) onlyMatchPartecipant(matchId) onlyCodeMaker(matchId, turnId) public{
         if(bytes(secret).length==0){
-            revert InvalidParameter("secret","Empty string");
+            revert GameUtils.InvalidParameter("secret","Empty string");
         }
 
         if(!Utils.containsCharsOf(availableColors, secret))
-            revert InvalidParameter("secret","Invalid color in the code");
+            revert GameUtils.InvalidParameter("secret","Invalid color in the code");
 
         Turn storage t=activeMatches[matchId].turns[turnId];
         if(!t.turnSuspended){
-            revert UnauthorizedOperation("Turn not ended");
+            revert GameUtils.UnauthorizedOperation("Turn not ended");
         }
         
         string memory hashSecretProvided=string(abi.encodePacked(keccak256(bytes(secret))));
         if(!Utils.strcmp(hashSecretProvided, string(abi.encodePacked(t.codeHash)))){
             //TODO: IMPLEMENT THE PUNISHMENT POLICY  
-            emit cheatingDetected(matchId, turnId, t.codeMaker);
+            emit GameUtils.cheatingDetected(matchId, turnId, t.codeMaker);
+            return;
         }
 
+        //FIXME: We cannot start immediately another match since we need to let disputes to be opened
+        emit GameUtils.disputeWindowOpen(matchId, turnId, DISPUTEWINDOWLENGHT);
+        /*
         //Manages the situations which cause the ending of the turn
         if(t.correctColorAndPosition[(t.codeProposals.length)-1]==codeSize){ //Turn suspended because the codeBraker has guessed the hidden code!
             t.codeGuessed=true;
@@ -512,28 +497,36 @@ contract MastermindGame {
         }
         if(t.codeProposals.length==NUMBER_GUESSES){ //Turn suspended because the bounds on the attempts has been reached!
             endTurn(matchId, turnId, uint8(t.codeProposals.length));
-        }
+        }*/
     }
 
     /**
-     * Private function which has the role of manage the ending of a turn hence assigning the searned
-     * points to the codeMaker of that turn and emit the event of turn completion. 
+     * Function invoked by one of the participant after the closing of the dispute window in order to
+     * manage the ending of a turn, hence assigning the earned points to the codeMaker of that turn 
+     * and emit the event of turn completion. 
      * @param matchId id of the match
      * @param turnId  id of the turn
-     * @param attempts number of guesses done by the codeBreaker in the turn just completed
      */
-    function endTurn(uint matchId, uint8 turnId, uint8 attempts) private{
+    function endTurn(uint matchId, uint8 turnId) onlyMatchPartecipant(matchId) public{
         Match storage m=activeMatches[matchId];
         Turn storage t=m.turns[turnId];
-        uint8 earned=attempts;
-        if(!t.codeGuessed)
+        if(block.number<t.disputeWindowOpening+DISPUTEWINDOWLENGHT)
+            revert GameUtils.UnauthorizedOperation("Dispute window is still open");
+
+        uint8 earned=uint8(t.codeProposals.length);
+        if(!t.codeGuessed){
             earned+=extraReward;
+        }else{
+            earned--; //the last code proposed is correct hence it's not a failure to consider
+        }
+
         if(t.codeMaker==m.player1){
             m.score1+=earned;
         }else{
             m.score2+=earned;
         }
-        emit turnCompleted(matchId, turnId, earned, t.codeMaker);
+
+        emit GameUtils.turnCompleted(matchId, turnId, earned, t.codeMaker);
 
         if(m.turns.length<NUMBER_TURNS){ //Turn bound not reached, start another game
             initializeTurn(matchId, turnId+1);
@@ -546,12 +539,12 @@ contract MastermindGame {
         Match storage m=activeMatches[matchId];
         //Decide the winner of the match
         if(m.score1==m.score2){ //tie
-            emit matchCompleted(matchId, address(0));
+            emit GameUtils.matchCompleted(matchId, address(0));
         }else{
             if(m.score1<m.score2){
-                emit matchCompleted(matchId, m.player1);
+                emit GameUtils.matchCompleted(matchId, m.player1);
             }else{
-                emit matchCompleted(matchId, m.player2);
+                emit GameUtils.matchCompleted(matchId, m.player2);
             }
         }
 
@@ -568,24 +561,24 @@ contract MastermindGame {
      */
     function popByIndex(uint[] storage array, uint target) private {
         if(target>=array.length)
-            revert InvalidParameter("target","Out of bound");
+            revert GameUtils.InvalidParameter("target","Out of bound");
         array[target]=array[array.length-1];
         array.pop();
     }
 
     modifier onlyMatchCreator(uint matchId) {
         if(activeMatches[matchId].player1==address(0))
-            revert MatchNotFound(matchId);
+            revert GameUtils.MatchNotFound(matchId);
         if(activeMatches[matchId].player1!=msg.sender)
-            revert UnauthorizedAccess("You are not the creator of the match");
+            revert GameUtils.UnauthorizedAccess("You are not the creator of the match");
         _;
     }
 
     modifier onlyMatchPartecipant(uint matchId) {
         if(activeMatches[matchId].player1==address(0))
-            revert MatchNotFound(matchId);
+            revert GameUtils.MatchNotFound(matchId);
         if((activeMatches[matchId].player1!=msg.sender)&&(activeMatches[matchId].player2!=msg.sender))
-            revert UnauthorizedAccess("You are not a participant of the match");
+            revert GameUtils.UnauthorizedAccess("You are not a participant of the match");
         _;
     }
 
@@ -595,11 +588,11 @@ contract MastermindGame {
      */
     modifier onlyCodeMaker (uint matchId, uint turnId){
         if(activeMatches[matchId].player1==address(0))
-            revert MatchNotFound(matchId);
+            revert GameUtils.MatchNotFound(matchId);
         if(activeMatches[matchId].turns.length==0)
-            revert MatchNotStarted(matchId);
+            revert GameUtils.MatchNotStarted(matchId);
         if(activeMatches[matchId].turns[turnId].codeMaker!=msg.sender)
-            revert UnauthorizedOperation("You are not the codeMaker of this turn");
+            revert GameUtils.UnauthorizedOperation("You are not the codeMaker of this turn");
         _;
     }
 
@@ -609,36 +602,36 @@ contract MastermindGame {
      */
     modifier onlyCodeBreaker(uint matchId, uint turnId){
         if(activeMatches[matchId].player1==address(0))
-            revert MatchNotFound(matchId);
+            revert GameUtils.MatchNotFound(matchId);
         if(activeMatches[matchId].turns.length==0)
-            revert MatchNotStarted(matchId);
+            revert GameUtils.MatchNotStarted(matchId);
         if(activeMatches[matchId].turns[turnId].codeMaker==msg.sender)
-            revert UnauthorizedOperation("You are not the codeBreaker of this turn");
+            revert GameUtils.UnauthorizedOperation("You are not the codeBreaker of this turn");
         _;
     }
 
     function dropTheMatch(uint matchId) private{
         if(activeMatches[matchId].player1==address(0))
-            revert MatchNotFound(matchId);
+            revert GameUtils.MatchNotFound(matchId);
         activeMatchesNum--;
         delete activeMatches[matchId];
-        emit matchDeleted(matchId);
+        emit GameUtils.matchDeleted(matchId);
     }
 
     function getCodeMaker(uint matchId, uint turnId) public view returns (address){
         if(activeMatches[matchId].player1==address(0))
-            revert MatchNotFound(matchId);
+            revert GameUtils.MatchNotFound(matchId);
         if(activeMatches[matchId].turns.length==0)
-            revert MatchNotStarted(matchId);
+            revert GameUtils.MatchNotStarted(matchId);
 
         return activeMatches[matchId].turns[turnId].codeMaker;
     }
 
     function getCodeBreaker(uint matchId, uint turnId) public view returns (address){
         if(activeMatches[matchId].player1==address(0))
-            revert MatchNotFound(matchId);
+            revert GameUtils.MatchNotFound(matchId);
         if(activeMatches[matchId].turns.length==0)
-            revert MatchNotStarted(matchId);
+            revert GameUtils.MatchNotStarted(matchId);
         if(activeMatches[matchId].player1==activeMatches[matchId].turns[turnId].codeMaker){
             return activeMatches[matchId].player2;
         }else{

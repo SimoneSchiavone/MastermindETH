@@ -727,16 +727,30 @@ describe("MastermindGame Contract", function(){
 
         it("Should emit the correct event of turn completion in case of code guessed",async function(){
             const {owner, joiner, MastermindGame}=await loadFixture(publicTurnAlmostConcluded_Guessed);
+            if((await MastermindGame.getCodeMaker(0,0))==owner.address){
+                await expect(MastermindGame.provideSecret(0, 0, "ARBGR")).to.emit(MastermindGame,"disputeWindowOpen").withArgs(0, 0, 10);
+            }else{
+                await expect(MastermindGame.connect(joiner).provideSecret(0, 0, "ARBGR")).to.emit(MastermindGame,"disputeWindowOpen").withArgs(0, 0, 10);
+            }
+            //FIXME: This should be done later in the endturn method
+            /*
             //Only 1 attempt used to guess the code of the turn 0 of match 0 --> Score 0 for the codeMaker
             if((await MastermindGame.getCodeMaker(0,0))==owner.address){
                 await expect(MastermindGame.provideSecret(0, 0, "ARBGR")).to.emit(MastermindGame,"turnCompleted").withArgs(0, 0, 0, owner.address);
             }else{
                 await expect(MastermindGame.connect(joiner).provideSecret(0, 0, "ARBGR")).to.emit(MastermindGame,"turnCompleted").withArgs(0, 0, 0, joiner.address);
-            }
+            }*/
         })
 
         it("Should emit the correct event of turn completion in case of code not guessed",async function(){
             const {owner, joiner, MastermindGame}=await loadFixture(publicTurnAlmostConcluded_NotGuessed);
+            if((await MastermindGame.getCodeMaker(0,0))==owner.address){
+                await expect(MastermindGame.provideSecret(0, 0, "ARBGR")).to.emit(MastermindGame,"disputeWindowOpen").withArgs(0, 0, 10);
+            }else{
+                await expect(MastermindGame.connect(joiner).provideSecret(0, 0, "ARBGR")).to.emit(MastermindGame,"disputeWindowOpen").withArgs(0, 0, 10);
+            }
+            //FIXME: This should be done later in the endturn method
+            /*
             //5 attempt used by the codeBreaker who has not guessed the code --> Score 5+BONUS (5) for the codeMaker
             if((await MastermindGame.getCodeMaker(0,0))==owner.address){
                 await expect(MastermindGame.provideSecret(0, 0, "ARBGR")).to.emit(MastermindGame,"turnCompleted").withArgs(0, 0, 10, owner.address)
@@ -744,7 +758,9 @@ describe("MastermindGame Contract", function(){
             }else{
                 await expect(MastermindGame.connect(joiner).provideSecret(0, 0, "ARBGR")).to.emit(MastermindGame,"turnCompleted").withArgs(0, 0, 10, joiner.address)
                     .and.to.emit(MastermindGame,"newTurnStarted").withArgs(0, 1, owner.address); //initialize a new turn with id 1 and swapped codeMaker;
-            }
+            }*/
         })
     })
+
+
 })
