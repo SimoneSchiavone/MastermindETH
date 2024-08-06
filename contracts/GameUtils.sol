@@ -47,4 +47,7 @@ library GameUtils{
     error UnauthorizedAccess(string conditionViolated);
     error UnauthorizedOperation(string conditionViolated);
     error MatchNotStarted(uint matchId);
+    error TurnNotStarted(uint turnId);
+    error TurnNotEnded(uint turnId);
+
 }
