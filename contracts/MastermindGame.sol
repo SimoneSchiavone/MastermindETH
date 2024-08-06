@@ -23,7 +23,8 @@ contract MastermindGame {
     uint8 constant NUMBER_GUESSES=5;
 
     //---DEADLINES---
-    uint public constant STAKEPAYMENTDEADLINE = 300;
+    uint public constant STAKEPAYMENTDEADLINE = 25; //25 blocks, about 5 minutes
+
     
 
     //---MATCH MANAGEMENT---
@@ -33,7 +34,7 @@ contract MastermindGame {
         address player2; //second player
         
         uint stake; //amount in wei to put in stake for this match
-        uint timestampStakePaymentsOpening; //timestamp of when the stake amount is fixed by the creator
+        uint timestampStakePaymentsOpening; //blocknum of the block in which the stake is fixed
         bool deposit1; //indicates that player1 has payed the stake amount
         bool deposit2; //indicates that player2 has payed the stake amount
 
@@ -53,6 +54,7 @@ contract MastermindGame {
 
         bool codeGuessed; //indicates that the code has been guessed by the codeBreaker
         bool turnSuspended; //indicates wether the turn is sospended due to the attempt bound or by the guessing of the secret
+        uint suspensionTimestamp; //timestamp when the turn has been suspended due to a guess or attempts limit.
     }
 
     mapping(uint => Match) public activeMatches; //maps an active matchId to the players addresses
@@ -279,7 +281,7 @@ contract MastermindGame {
 
         Match storage m=activeMatches[matchId];
         m.stake=value;
-        m.timestampStakePaymentsOpening=block.timestamp;
+        m.timestampStakePaymentsOpening=block.number;
         /*registers the timestamp when tha amount to pay is fixed because participant should send their funds
         within STAKEPAYMENTDEADLINE seconds, otherwise one of the parties can retire its funds and nullify the match */
     }
@@ -335,7 +337,7 @@ contract MastermindGame {
         }
 
         //Check if the deadline for the payments of the stake amount is already expired
-        require(block.timestamp>=(m.timestampStakePaymentsOpening+STAKEPAYMENTDEADLINE),"You cannot request the refund until the deadline for the payments is expired!");
+        require(block.number>=(m.timestampStakePaymentsOpening+STAKEPAYMENTDEADLINE),"You cannot request the refund until the deadline for the payments is expired!");
 
         (bool success,) = msg.sender.call{value: m.stake}("");
         require(success,"Refund payment failed!");
@@ -374,7 +376,7 @@ contract MastermindGame {
         //New turn creation and insertion in the associated match
         uint[] memory whatever; //empty array
         string[] memory _whatever;
-        Turn memory t= Turn({turnNo: turnId,codeMaker: _codeMaker, codeHash: 0,codeProposals: _whatever,correctColorAndPosition: whatever,correctColor: whatever, codeGuessed: false, turnSuspended: false});
+        Turn memory t= Turn({turnNo: turnId,codeMaker: _codeMaker, codeHash: 0,codeProposals: _whatever,correctColorAndPosition: whatever,correctColor: whatever, codeGuessed: false, turnSuspended: false, suspensionTimestamp: 0});
         m.turns.push(t);
         
         //Notifies the completion of this phase and request the codeMaker to start this turn
@@ -471,6 +473,9 @@ contract MastermindGame {
         }
     }
 
+    function openDispute(uint matchId, uint8 turnId, uint8 feedbackNum) public onlyMatchPartecipant(matchId) onlyCodeBreaker(matchId, turnId){
+
+    }
     //----------TURN CONCLUSION----------
     /**
      * Function invoked by the codeMaker in order to prove that he has not changed the secret code during the
@@ -515,7 +520,7 @@ contract MastermindGame {
      * points to the codeMaker of that turn and emit the event of turn completion. 
      * @param matchId id of the match
      * @param turnId  id of the turn
-     * @param attempts number of guesses posed by the codeBreaker in the turn just completed
+     * @param attempts number of guesses done by the codeBreaker in the turn just completed
      */
     function endTurn(uint matchId, uint8 turnId, uint8 attempts) private{
         Match storage m=activeMatches[matchId];
@@ -530,17 +535,15 @@ contract MastermindGame {
         }
         emit turnCompleted(matchId, turnId, earned, t.codeMaker);
 
-        /*
         if(m.turns.length<NUMBER_TURNS){ //Turn bound not reached, start another game
             initializeTurn(matchId, turnId+1);
         }else{ //Turn bound reached, close the match
-            //endMatch();
-        }*/
+            endMatch(matchId);
+        }
     }
-    
-    function endMatch(uint matchId, uint8 turnId) private {
-        Match storage m=activeMatches[matchId];
 
+    function endMatch(uint matchId) private {
+        Match storage m=activeMatches[matchId];
         //Decide the winner of the match
         if(m.score1==m.score2){ //tie
             emit matchCompleted(matchId, address(0));
