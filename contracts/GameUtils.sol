@@ -43,11 +43,12 @@ library GameUtils{
     //----------ERRORS----------
     error InvalidParameter(string which, string reason);
     error MatchNotFound(uint matchId);
+    error TurnNotFound(uint turnId);
     error DuplicateOperation(string reason);
     error UnauthorizedAccess(string conditionViolated);
     error UnauthorizedOperation(string conditionViolated);
     error MatchNotStarted(uint matchId);
-    error TurnNotStarted(uint turnId);
     error TurnNotEnded(uint turnId);
+    error TurnEnded(uint turnId);
 
 }

@@ -92,17 +92,18 @@ library Utils{
         for (uint i=0; i<s1_.length; i++) {
             if (s1_[i] != s2_[i]) { //if it's a "full" match do not take into consideration
                 charOccurrencesS1[uint8(s1_[i])]++;
-                charOccurrencesS1[uint8(s2_[i])]++;
+                charOccurrencesS2[uint8(s2_[i])]++;
             }
         }
 
         uint semiMatches=0;
         //Scan of the alphabet to compute the number of "semi-matches" (wrong position)
         for (uint i=0; i<alphabet_.length; i++) {
+            //console.log("Scansiono %d al tentativo %d", uint8(alphabet_[i]))
             if (charOccurrencesS1[uint8(alphabet_[i])] <= charOccurrencesS2[uint8(alphabet_[i])] ) { //take the min
-                semiMatches+=charOccurrencesS1[uint8(s1_[i])]++;
+                semiMatches+=charOccurrencesS1[uint8(alphabet_[i])];
             }else{
-                semiMatches+=charOccurrencesS2[uint8(s1_[i])]++;
+                semiMatches+=charOccurrencesS2[uint8(alphabet_[i])];
             }
         }  
         return semiMatches;

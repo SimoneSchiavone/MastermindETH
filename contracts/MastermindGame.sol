@@ -25,7 +25,7 @@ contract MastermindGame {
 
     //---DEADLINES---
     uint8 public constant STAKEPAYMENTDEADLINE = 25; //25 blocks, about 5 minutes
-    uint8 public constant DISPUTEWINDOWLENGHT= 10; //10 blocks, about 2 minutes
+    uint8 public constant DISPUTEWINDOWLENGTH= 10; //10 blocks, about 2 minutes
 
     
 
@@ -357,7 +357,8 @@ contract MastermindGame {
     function publishCodeHash(uint matchId, uint8 turnId, bytes32 codeDigest) onlyMatchParticipant(matchId) onlyCodeMaker(matchId, turnId) public{ 
         //The checks regarding the match/turn ids are performed by the modifier
         //Check that this turn is not already finished.
-        require((activeMatches[matchId].turns.length)-1==turnId,"This turn is already finished!");
+        if((activeMatches[matchId].turns.length)-1!=turnId)
+            revert GameUtils.TurnEnded(turnId);
         if(activeMatches[matchId].turns[turnId].codeHash!=0)
             revert GameUtils.DuplicateOperation("Secret code digest published");
         
@@ -378,7 +379,8 @@ contract MastermindGame {
     function guessTheCode(uint matchId, uint8 turnId, string memory codeProponed) onlyMatchParticipant(matchId) onlyCodeBreaker(matchId, turnId) public{ 
         //The checks regarding the match/turn ids are performed by the modifier
         //Check that this turn is not already finished.
-        require((activeMatches[matchId].turns.length)-1==turnId,"This turn is already finished!");
+        if((activeMatches[matchId].turns.length)-1!=turnId)
+            revert GameUtils.TurnEnded(turnId);
 
         Turn storage t=activeMatches[matchId].turns[turnId]; //actual turn
         //CONTROLLO NON NECESSARIO PERCHè' ALL'ULTIMO TENTATIVO IL TURNO TERMINA
@@ -405,10 +407,11 @@ contract MastermindGame {
      * @param corrPos number of correct positions, which means also correct code
      * @param wrongPosCorrCol number of wrong positions but right colors
      */
-    function provideFeedback(uint matchId, uint8 turnId, uint8 corrPos, uint8 wrongPosCorrCol) onlyMatchParticipant(matchId) onlyCodeMaker(matchId, turnId) public{
+    function publishFeedback(uint matchId, uint8 turnId, uint8 corrPos, uint8 wrongPosCorrCol) onlyMatchParticipant(matchId) onlyCodeMaker(matchId, turnId) public{
         //The checks regarding the match/turn ids are performed by the modifier
         //Check that this turn is not already finished.
-        require((activeMatches[matchId].turns.length)-1==turnId,"This turn is already finished!");
+        if((activeMatches[matchId].turns.length)-1!=turnId)
+            revert GameUtils.TurnEnded(turnId);
         if(corrPos>codeSize)
             revert GameUtils.InvalidParameter("correctPositions",">codeSize");
         if(wrongPosCorrCol>codeSize)
@@ -454,11 +457,9 @@ contract MastermindGame {
             revert GameUtils.TurnNotEnded(turnId);
         if(bytes(t.secret).length==0)
             revert GameUtils.UnauthorizedOperation("Secret code not provided");
-        if(block.number>t.disputeWindowOpening+DISPUTEWINDOWLENGHT)
+        if(block.number>t.disputeWindowOpening+DISPUTEWINDOWLENGTH)
             revert GameUtils.UnauthorizedOperation("Dispute window closed");
 
-        //FIXME: C'è un array out of bound qui, controllare
-        
         //Checks if the codeMaker has behaved unsportmanlike
         if(t.correctColorAndPosition[feedbackNum]!=Utils.matchCount(t.codeProposals[feedbackNum], t.secret)){
             //Case of wrong CC provided
@@ -466,7 +467,7 @@ contract MastermindGame {
             //TODO: Invoke punishment for codeMaker
             return;
         }
-        if(t.correctColorAndPosition[feedbackNum]!=Utils.semiMatchCount(t.codeProposals[feedbackNum], t.secret, availableColors)){
+        if(t.correctColor[feedbackNum]!=Utils.semiMatchCount(t.codeProposals[feedbackNum], t.secret, availableColors)){
             //Case of wrong NC provided
             emit GameUtils.cheatingDetected(matchId, turnId, t.codeMaker);
             //TODO: Invoke punishment for codeMaker
@@ -474,9 +475,11 @@ contract MastermindGame {
         }
 
         //The codeMaker has not performed any error so the issuer of the dispute will be punished
+        emit GameUtils.cheatingDetected(matchId, turnId, msg.sender);
         //TODO: Invoke punishment for codeBreaker (msg.sender, tanto è già controllato)
 
     }
+
     //----------TURN CONCLUSION----------
     /**
      * Function invoked by the codeMaker in order to prove that he has not changed the secret code during the
@@ -486,7 +489,7 @@ contract MastermindGame {
      * @param turnId  id of the turn
      * @param secret code decided by the codeMaker at the beginning of the turn
      */
-    function provideSecret(uint matchId, uint8 turnId, string memory secret) onlyMatchParticipant(matchId) onlyCodeMaker(matchId, turnId) public{
+    function publishSecret(uint matchId, uint8 turnId, string memory secret) onlyMatchParticipant(matchId) onlyCodeMaker(matchId, turnId) public{
         if(bytes(secret).length==0){
             revert GameUtils.InvalidParameter("secret","Empty string");
         }
@@ -508,7 +511,8 @@ contract MastermindGame {
 
         //FIXME: We cannot start immediately another match since we need to let disputes to be opened
         t.secret=secret;
-        emit GameUtils.disputeWindowOpen(matchId, turnId, DISPUTEWINDOWLENGHT);
+        t.disputeWindowOpening=block.number;
+        emit GameUtils.disputeWindowOpen(matchId, turnId, DISPUTEWINDOWLENGTH);
         /*
         //Manages the situations which cause the ending of the turn
         if(t.correctColorAndPosition[(t.codeProposals.length)-1]==codeSize){ //Turn suspended because the codeBraker has guessed the hidden code!
@@ -530,8 +534,14 @@ contract MastermindGame {
      */
     function endTurn(uint matchId, uint8 turnId) onlyMatchParticipant(matchId) public{
         Match storage m=activeMatches[matchId];
+        if(m.turns.length<=turnId)
+            revert GameUtils.TurnNotFound(turnId);
+
         Turn storage t=m.turns[turnId];
-        if(block.number<t.disputeWindowOpening+DISPUTEWINDOWLENGHT)
+        if(!t.isSuspended || bytes(t.secret).length==0) //Case match not suspended or secret not provided
+            revert GameUtils.UnauthorizedOperation("Turn not terminable");
+
+        if(block.number<t.disputeWindowOpening+DISPUTEWINDOWLENGTH)
             revert GameUtils.UnauthorizedOperation("Dispute window is still open");
 
         uint8 earned=uint8(t.codeProposals.length);
@@ -610,7 +620,7 @@ contract MastermindGame {
         if(activeMatches[matchId].turns.length==0)
             revert GameUtils.MatchNotStarted(matchId);
         if(turnId>=activeMatches[matchId].turns.length)
-            revert GameUtils.TurnNotStarted(turnId);
+            revert GameUtils.TurnNotFound(turnId);
         if(activeMatches[matchId].turns[turnId].codeMaker!=msg.sender)
             revert GameUtils.UnauthorizedOperation("You are not the codeMaker of this turn");
         _;
@@ -626,7 +636,7 @@ contract MastermindGame {
         if(activeMatches[matchId].turns.length==0)
             revert GameUtils.MatchNotStarted(matchId);
         if(turnId>=activeMatches[matchId].turns.length)
-            revert GameUtils.TurnNotStarted(turnId);
+            revert GameUtils.TurnNotFound(turnId);
         if(activeMatches[matchId].turns[turnId].codeMaker==msg.sender)
             revert GameUtils.UnauthorizedOperation("You are not the codeBreaker of this turn");
         _;
@@ -646,7 +656,7 @@ contract MastermindGame {
         if(activeMatches[matchId].turns.length==0)
             revert GameUtils.MatchNotStarted(matchId);
         if(turnId>=activeMatches[matchId].turns.length)
-            revert GameUtils.TurnNotStarted(turnId);
+            revert GameUtils.TurnNotFound(turnId);
 
         return activeMatches[matchId].turns[turnId].codeMaker;
     }
@@ -657,11 +667,20 @@ contract MastermindGame {
         if(activeMatches[matchId].turns.length==0)
             revert GameUtils.MatchNotStarted(matchId);
         if(turnId>=activeMatches[matchId].turns.length)
-            revert GameUtils.TurnNotStarted(turnId);
+            revert GameUtils.TurnNotFound(turnId);
         if(activeMatches[matchId].player1==activeMatches[matchId].turns[turnId].codeMaker){
             return activeMatches[matchId].player2;
         }else{
             return activeMatches[matchId].player1;
         }
+    }
+
+    function getActualPoints(uint matchId) public view returns (uint[] memory){
+        if(activeMatches[matchId].player1==address(0))
+            revert GameUtils.MatchNotFound(matchId);
+        uint[]memory scores=new uint[](2);
+        scores[0]=activeMatches[matchId].score1;
+        scores[1]=activeMatches[matchId].score2;
+        return scores;
     }
 }
