@@ -39,7 +39,7 @@ library GameUtils{
     //notifies that a player had a dishonest behavior hence punishment is performed
     event disputeWindowOpen(uint matchId, uint8 turnId, uint8 length);
     //notifies the opening of the dispute window providing also its length in blocks
-
+    event AFKreported(uint matchId, address afkplayer);
     //----------ERRORS----------
     error InvalidParameter(string which, string reason);
     error MatchNotFound(uint matchId);

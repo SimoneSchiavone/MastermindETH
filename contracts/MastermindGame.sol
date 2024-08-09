@@ -26,6 +26,7 @@ contract MastermindGame {
     //---DEADLINES---
     uint8 public constant STAKEPAYMENTDEADLINE = 25; //25 blocks, about 5 minutes
     uint8 public constant DISPUTEWINDOWLENGTH= 10; //10 blocks, about 2 minutes
+    uint8 public constant AFKWINDOWLENGTH= 10; //10 blocks, about 2 minutes
 
     
 
@@ -35,14 +36,21 @@ contract MastermindGame {
         address player1; //creator of the match
         address player2; //second player
         
+        //---Match stake management---
         uint stake; //amount in wei to put in stake for this match
         uint timestampStakePaymentsOpening; //blocknum of the block in which the stake is fixed
         bool deposit1; //indicates that player1 has payed the stake amount
         bool deposit2; //indicates that player2 has payed the stake amount
 
+        //---Turns management---
         uint score1;
         uint score2;
         Turn[] turns;
+
+        //---AFK management---
+        uint lastAFKreport;
+        address whoReportedTheLastAFK;
+        address whoHasToDoTheNextOp; 
     }
 
     struct Turn{
@@ -64,7 +72,7 @@ contract MastermindGame {
     uint[] publicMatchesWaitingForAnOpponent; 
     //array of the matchesIDs of matches without "player2" specified waiting for a player
     uint[] privateMatchesWaitingForAnOpponent; 
-    //array of the matchesIDs of matches without "player2" specified waiting for a player
+    //array of the matchesIDs of matches specified waiting for a specific player
 
     uint activeMatchesNum=0; //counts active matches
     uint private nextMatchId=0; //matchId generation
@@ -310,6 +318,7 @@ contract MastermindGame {
         require(success,"Refund payment failed!");
 
         dropTheMatch(matchId);
+        emit GameUtils.matchDeleted(matchId);
     }
     
     //----------TURN INITIALIZATION----------
@@ -342,6 +351,10 @@ contract MastermindGame {
         
         //Notifies the completion of this phase and request the codeMaker to start this turn
         emit GameUtils.newTurnStarted(matchId, turnId, t.codeMaker);
+
+        //AFK parameters management
+        m.whoHasToDoTheNextOp=t.codeMaker;
+        //FIXME: Pensare se serve resettare anche l'afk report time
     }
 
     //----------TURN ACTIONS----------
@@ -357,14 +370,18 @@ contract MastermindGame {
     function publishCodeHash(uint matchId, uint8 turnId, bytes32 codeDigest) onlyMatchParticipant(matchId) onlyCodeMaker(matchId, turnId) public{ 
         //The checks regarding the match/turn ids are performed by the modifier
         //Check that this turn is not already finished.
-        if((activeMatches[matchId].turns.length)-1!=turnId)
+        Match storage m=activeMatches[matchId];
+        if((m.turns.length)-1!=turnId)
             revert GameUtils.TurnEnded(turnId);
-        if(activeMatches[matchId].turns[turnId].codeHash!=0)
+        if(m.turns[turnId].codeHash!=0)
             revert GameUtils.DuplicateOperation("Secret code digest published");
         
-        //PENSA SE FAR PARTIRE IL PUNISHMENT GIA' QUI
-        activeMatches[matchId].turns[turnId].codeHash=codeDigest;
+        m.turns[turnId].codeHash=codeDigest;
         emit GameUtils.codeHashPublished(matchId, turnId, codeDigest);
+
+        //AFK parameters management
+        m.lastAFKreport=0; //reset the AFK timer if it was started by an AFK report
+        m.whoHasToDoTheNextOp=getCodeBreaker(matchId, turnId); //next move should be a guess from the codeBreaker
     }
     
     /**
@@ -379,10 +396,11 @@ contract MastermindGame {
     function guessTheCode(uint matchId, uint8 turnId, string memory codeProponed) onlyMatchParticipant(matchId) onlyCodeBreaker(matchId, turnId) public{ 
         //The checks regarding the match/turn ids are performed by the modifier
         //Check that this turn is not already finished.
-        if((activeMatches[matchId].turns.length)-1!=turnId)
+        Match storage m=activeMatches[matchId];
+        if((m.turns.length)-1!=turnId)
             revert GameUtils.TurnEnded(turnId);
 
-        Turn storage t=activeMatches[matchId].turns[turnId]; //actual turn
+        Turn storage t=m.turns[turnId]; //actual turn
         //CONTROLLO NON NECESSARIO PERCHè' ALL'ULTIMO TENTATIVO IL TURNO TERMINA
         require(t.codeProposals.length<NUMBER_GUESSES,"Too many attempts for this turn!");
         if(t.isSuspended){
@@ -397,6 +415,10 @@ contract MastermindGame {
      
         t.codeProposals.push(codeProponed);
         emit GameUtils.newGuess(matchId, turnId, codeProponed);
+
+        //AFK parameters management
+        m.lastAFKreport=0; //reset the AFK timer if it was started by an AFK report
+        m.whoHasToDoTheNextOp=t.codeMaker; //next move should be a feedback from the codeMaker
     }
 
     /**
@@ -410,14 +432,15 @@ contract MastermindGame {
     function publishFeedback(uint matchId, uint8 turnId, uint8 corrPos, uint8 wrongPosCorrCol) onlyMatchParticipant(matchId) onlyCodeMaker(matchId, turnId) public{
         //The checks regarding the match/turn ids are performed by the modifier
         //Check that this turn is not already finished.
-        if((activeMatches[matchId].turns.length)-1!=turnId)
+        Match storage m=activeMatches[matchId];
+        if((m.turns.length)-1!=turnId)
             revert GameUtils.TurnEnded(turnId);
         if(corrPos>codeSize)
             revert GameUtils.InvalidParameter("correctPositions",">codeSize");
         if(wrongPosCorrCol>codeSize)
             revert GameUtils.InvalidParameter("wrongPositionCorrectColors",">codeSize");
         
-        Turn storage t=activeMatches[matchId].turns[turnId]; //actual turn
+        Turn storage t=m.turns[turnId]; //actual turn
         uint attemptNum=t.codeProposals.length;
 
         //The correct situation is when the codeProposals array has a length greater than the feedback ones of 1 unit
@@ -433,51 +456,26 @@ contract MastermindGame {
             t.codeGuessed=true;
             t.isSuspended=true;
             emit GameUtils.secretRequired(matchId, turnId, true,t.codeMaker);
+
+            //AFK parameters management
+            m.lastAFKreport=0; //reset the AFK timer if it was started by an AFK report
+            m.whoHasToDoTheNextOp=t.codeMaker; //next move should be the secret publication from the codeMaker
+            return;
         }
         if(t.codeProposals.length==NUMBER_GUESSES){ //CodeMaker has won the turn because the codeBreaker has exhausted its attempts
             t.isSuspended=true;
             emit GameUtils.secretRequired(matchId, turnId,false, t.codeMaker);
-        }
-    }
 
-    /**
-     * Function invoked by the codeBreaker of the turn in order to report the fact that, in its opinion, the
-     * codeMaker has provided a wrong feedback for one of its guesses. If the dispute will be accepted by the
-     * contract the codeMaker will be punished accordingly to the policies implemented, otherwise the punishment
-     * will be done on the issuer.
-     * @param matchId id of the match reported
-     * @param turnId id of the turn reported
-     * @param feedbackNum number of the feedback reported (starting from 0)
-     */
-    function openDispute(uint matchId, uint8 turnId, uint8 feedbackNum) public onlyMatchParticipant(matchId) onlyCodeBreaker(matchId, turnId){
-        Turn storage t=activeMatches[matchId].turns[turnId];
-        if(feedbackNum>=t.codeProposals.length)
-            revert GameUtils.InvalidParameter("feedbackNum",">#guesses emitted");
-        if(!t.isSuspended)
-            revert GameUtils.TurnNotEnded(turnId);
-        if(bytes(t.secret).length==0)
-            revert GameUtils.UnauthorizedOperation("Secret code not provided");
-        if(block.number>t.disputeWindowOpening+DISPUTEWINDOWLENGTH)
-            revert GameUtils.UnauthorizedOperation("Dispute window closed");
-
-        //Checks if the codeMaker has behaved unsportmanlike
-        if(t.correctColorAndPosition[feedbackNum]!=Utils.matchCount(t.codeProposals[feedbackNum], t.secret)){
-            //Case of wrong CC provided
-            emit GameUtils.cheatingDetected(matchId, turnId, t.codeMaker);
-            //TODO: Invoke punishment for codeMaker
-            return;
-        }
-        if(t.correctColor[feedbackNum]!=Utils.semiMatchCount(t.codeProposals[feedbackNum], t.secret, availableColors)){
-            //Case of wrong NC provided
-            emit GameUtils.cheatingDetected(matchId, turnId, t.codeMaker);
-            //TODO: Invoke punishment for codeMaker
+            //AFK parameters management
+            m.lastAFKreport=0; //reset the AFK timer if it was started by an AFK report
+            m.whoHasToDoTheNextOp=t.codeMaker; //next move should be the secret publication from the codeMaker
             return;
         }
 
-        //The codeMaker has not performed any error so the issuer of the dispute will be punished
-        emit GameUtils.cheatingDetected(matchId, turnId, msg.sender);
-        //TODO: Invoke punishment for codeBreaker (msg.sender, tanto è già controllato)
-
+        //AFK parameters management
+        m.lastAFKreport=0; //reset the AFK timer if it was started by an AFK report
+        m.whoHasToDoTheNextOp=getCodeBreaker(matchId, turnId); //next move should be a guess from the codeBreaker
+        return;
     }
 
     //----------TURN CONCLUSION----------
@@ -497,32 +495,29 @@ contract MastermindGame {
         if(!Utils.containsCharsOf(availableColors, secret))
             revert GameUtils.InvalidParameter("secret","Invalid color in the code");
 
-        Turn storage t=activeMatches[matchId].turns[turnId];
+        Match storage m=activeMatches[matchId];
+        Turn storage t=m.turns[turnId];
         if(!t.isSuspended){
             revert GameUtils.TurnNotEnded(turnId);
         }
         
         string memory hashSecretProvided=string(abi.encodePacked(keccak256(bytes(secret))));
         if(!Utils.strcmp(hashSecretProvided, string(abi.encodePacked(t.codeHash)))){
-            //TODO: IMPLEMENT THE PUNISHMENT POLICY  
             emit GameUtils.cheatingDetected(matchId, turnId, t.codeMaker);
+            punish(matchId, msg.sender);
             return;
         }
 
-        //FIXME: We cannot start immediately another match since we need to let disputes to be opened
+        //We cannot start immediately another turn since we need to let disputes to be opened
         t.secret=secret;
         t.disputeWindowOpening=block.number;
         emit GameUtils.disputeWindowOpen(matchId, turnId, DISPUTEWINDOWLENGTH);
-        /*
-        //Manages the situations which cause the ending of the turn
-        if(t.correctColorAndPosition[(t.codeProposals.length)-1]==codeSize){ //Turn suspended because the codeBraker has guessed the hidden code!
-            t.codeGuessed=true;
-            //The points earned are the number of failed attempts hence subtract1
-            endTurn(matchId, turnId, uint8(t.codeProposals.length-1));
-        }
-        if(t.codeProposals.length==NUMBER_GUESSES){ //Turn suspended because the bounds on the attempts has been reached!
-            endTurn(matchId, turnId, uint8(t.codeProposals.length));
-        }*/
+
+        //AFK parameters management
+        m.lastAFKreport=0; //reset the AFK timer if it was started by an AFK report
+        m.whoHasToDoTheNextOp=getCodeBreaker(matchId, turnId); 
+        //next move should be the opening of a dispute or the end game (confirmation) of the codeBreaker
+        return;
     }
 
     /**
@@ -532,7 +527,7 @@ contract MastermindGame {
      * @param matchId id of the match
      * @param turnId  id of the turn
      */
-    function endTurn(uint matchId, uint8 turnId) onlyMatchParticipant(matchId) public{
+    function endTurn(uint matchId, uint8 turnId) onlyMatchParticipant(matchId) onlyCodeBreaker(matchId, turnId) public{
         Match storage m=activeMatches[matchId];
         if(m.turns.length<=turnId)
             revert GameUtils.TurnNotFound(turnId);
@@ -558,24 +553,140 @@ contract MastermindGame {
         if(m.turns.length<NUMBER_TURNS){ //Turn bound not reached, start another game
             initializeTurn(matchId, turnId+1);
         }else{ //Turn bound reached, close the match
-            endMatch(matchId);
+            endMatch(matchId, false);
+        }
+
+        /*Here the AFK parameters management it is not required since, if there will be another turn,
+        initializeTurn function will manage it*/
+    }
+    
+    //TODO: Implement
+    function endMatch(uint matchId, bool fromPunishment) private {
+        Match storage m=activeMatches[matchId];
+
+        if(!fromPunishment){
+            //Decide the winner of the match
+            if(m.score1==m.score2){ //tie
+                emit GameUtils.matchCompleted(matchId, address(0));
+            }else{
+                if(m.score1<m.score2){
+                    emit GameUtils.matchCompleted(matchId, m.player1);
+                }else{
+                    emit GameUtils.matchCompleted(matchId, m.player2);
+                }
+            }
+            //TODO: Pay the winner (manage properly the tie)
+            dropTheMatch(matchId);
+        }else{
+            //If the function is invoked from the punishment notifies the deletion of the match
+            dropTheMatch(matchId);
+            emit GameUtils.matchDeleted(matchId);
         }
     }
 
-    function endMatch(uint matchId) private {
-        Match storage m=activeMatches[matchId];
-        //Decide the winner of the match
-        if(m.score1==m.score2){ //tie
-            emit GameUtils.matchCompleted(matchId, address(0));
-        }else{
-            if(m.score1<m.score2){
-                emit GameUtils.matchCompleted(matchId, m.player1);
-            }else{
-                emit GameUtils.matchCompleted(matchId, m.player2);
-            }
+    //----------AFK & DISPUTES----------
+    /**
+     * Function invoked by the codeBreaker of the turn in order to report the fact that, in its opinion, the
+     * codeMaker has provided a wrong feedback for one of its guesses. If the dispute will be accepted by the
+     * contract the codeMaker will be punished accordingly to the policies implemented, otherwise the punishment
+     * will be done on the issuer.
+     * @param matchId id of the match reported
+     * @param turnId id of the turn reported
+     * @param feedbackNum number of the feedback reported (starting from 0)
+     */
+    function openDispute(uint matchId, uint8 turnId, uint8 feedbackNum) public onlyMatchParticipant(matchId) onlyCodeBreaker(matchId, turnId){
+        Turn storage t=activeMatches[matchId].turns[turnId];
+        if(feedbackNum>=t.codeProposals.length)
+            revert GameUtils.InvalidParameter("feedbackNum",">#guesses emitted");
+        if(!t.isSuspended)
+            revert GameUtils.TurnNotEnded(turnId);
+        if(bytes(t.secret).length==0)
+            revert GameUtils.UnauthorizedOperation("Secret code not provided");
+        if(block.number>t.disputeWindowOpening+DISPUTEWINDOWLENGTH)
+            revert GameUtils.UnauthorizedOperation("Dispute window closed");
+
+        //Checks if the codeMaker has behaved unsportmanlike
+        if(t.correctColorAndPosition[feedbackNum]!=Utils.matchCount(t.codeProposals[feedbackNum], t.secret)){
+            //Case of wrong CC provided
+            emit GameUtils.cheatingDetected(matchId, turnId, t.codeMaker);
+            punish(matchId, t.codeMaker);
+            return;
+        }
+        if(t.correctColor[feedbackNum]!=Utils.semiMatchCount(t.codeProposals[feedbackNum], t.secret, availableColors)){
+            //Case of wrong NC provided
+            emit GameUtils.cheatingDetected(matchId, turnId, t.codeMaker);
+            punish(matchId, t.codeMaker);
+            return;
         }
 
-        //C'è già Drop The Match per chiudere tutto
+        //The codeMaker has not performed any error so the issuer of the dispute will be punished
+        emit GameUtils.cheatingDetected(matchId, turnId, msg.sender);
+        //Invoke punishment for codeBreaker (which is msg.sender because it has been checked at the begin of the function)
+        punish(matchId, msg.sender);
+
+        /*Here the AFK parameters management is not required because when a dispute is open the game will surely end */
+    }
+
+    /**
+     * @notice This function can be invoked by a participant of the match in order to notify the contract that
+     * the opponent is AFK, hence the game is stucked due to his inactivity. An event is emitted
+     * to trigger the opponent to perform the operation required.
+     * @param matchId Id of the match
+     */
+    function reportOpponentAFK(uint matchId) public onlyMatchParticipant(matchId){
+        Match storage m=activeMatches[matchId];
+        if(m.whoReportedTheLastAFK==msg.sender)
+            revert GameUtils.DuplicateOperation("AFK Already reported");
+        
+        if(m.whoHasToDoTheNextOp==msg.sender){
+            //who has been reported to be AFK can only perform the action required
+            revert GameUtils.UnauthorizedOperation("Please do the next operation of the turn");
+        } 
+        
+        address afkplayer = (msg.sender==m.player1) ? m.player2 : m.player1;
+        
+        m.lastAFKreport=block.number; //set the blocknum of this
+        m.whoReportedTheLastAFK=msg.sender; 
+        emit GameUtils.AFKreported(matchId, afkplayer);
+    }
+
+    function requestRefundForAFK(uint matchId) public onlyMatchParticipant(matchId){
+        Match storage m=activeMatches[matchId];
+        //Check that you have reported the AFK
+        if(m.whoReportedTheLastAFK!=msg.sender)
+            revert GameUtils.UnauthorizedOperation("You have not reported an AFK");
+
+        if(m.lastAFKreport==0) //case of AFK report closed due to an opponent action
+            revert GameUtils.UnauthorizedOperation("AFK window closed");
+        
+        if(block.number<m.lastAFKreport+AFKWINDOWLENGTH) //time left is not expired
+            revert GameUtils.UnauthorizedOperation("AFK window still open");
+
+        address afkplayer = (msg.sender==m.player1) ? m.player2 : m.player1;
+        punish(matchId, afkplayer); //this function does the punishment and closes the match
+    }
+    /**
+     * @notice Private function invoked by some other function in the contract when a cheating is detected.
+     * The function sends the match stake to the honest player.
+     * @param matchId if of the match
+     * @param who cheater player
+     */
+    function punish(uint matchId, address who) private{
+        if(activeMatches[matchId].player1==address(0))
+            revert GameUtils.MatchNotFound(matchId);
+
+        uint stake=activeMatches[matchId].stake;
+        stake*=2; //double the stake because the honest player will obtain the stake of the cheater one
+
+        if(activeMatches[matchId].player1==who){
+            (bool success,) = activeMatches[matchId].player2.call{value: stake}("");
+            require(success,"Refund payment failed!");
+        }else{
+            (bool success,) = activeMatches[matchId].player1.call{value: stake}("");
+            require(success,"Refund payment failed!");
+        }
+        
+        endMatch(matchId,true);
     }
 
     //----------UTILITIES AND MODIFIERS----------
@@ -647,7 +758,6 @@ contract MastermindGame {
             revert GameUtils.MatchNotFound(matchId);
         activeMatchesNum--;
         delete activeMatches[matchId];
-        emit GameUtils.matchDeleted(matchId);
     }
 
     function getCodeMaker(uint matchId, uint turnId) public view returns (address){
