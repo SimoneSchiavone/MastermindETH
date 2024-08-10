@@ -153,31 +153,6 @@ contract MastermindGame {
     }
 
     /**
-     * @notice Function return the address of the creator of the match whose id is "id". It fails if
-     * the give id is not related to any active match.
-     * @param matchId id of the match whe are looking for
-     */
-    function getMatchCreator(uint matchId) public view returns (address){
-        if(activeMatches[matchId].player1==address(0))
-            revert GameUtils.MatchNotFound(matchId);
-        return activeMatches[matchId].player1;
-    }
-
-    /**
-     * @notice Function return the address of the second player of the match whose id is "id". It fails if
-     * the given id is not related to any active match or if that match is still waiting for an opponent.
-     * Notice that the match creator can have specified the address of the contender but he/she may have not
-     * already join the match.
-     * @param matchId id of the match whe are looking for
-     */
-    function getSecondPlayer(uint matchId) public view returns (address){
-        if(activeMatches[matchId].player1==address(0))
-            revert GameUtils.MatchNotFound(matchId);
-        require(activeMatches[matchId].player2!=address(0),"This game is waiting for an opponent!"); 
-        return activeMatches[matchId].player2;
-    }
-
-    /**
      * @notice Function that allow to join the match with id "id". In order to succeed in this operation we need that:
      * - the game has a slot available for any second player
      * OR
@@ -263,7 +238,6 @@ contract MastermindGame {
 
     /**
      * @notice Function callable by the participants of a match in order to deposit the amount to put in stake.
-     * @param matchId id of the match for which we are paying
      */
     function depositStake(uint matchId) onlyMatchParticipant(matchId) payable public{
         if(msg.value==0)
@@ -296,7 +270,6 @@ contract MastermindGame {
      * @notice Function callable by the participants of a match in order to retire the amount of wei they have put in stake.
      * This works only if the phase of wei collection takes more than STAKEPAYMENTDEADLINE seconds. This action will
      * nullify the match.
-     * @param matchId id of the match of which we would like to retire the funds
      */
     function requestRefundMatchStake(uint matchId) onlyMatchParticipant(matchId) public {
         Match storage m=activeMatches[matchId];
@@ -325,7 +298,6 @@ contract MastermindGame {
     /**
      * @notice Match creation automatically invoked whenever the contract receives
      * the stake payment from both the game participant.
-     * @param matchId id of the match to initialize
      */
     function initializeTurn(uint matchId, uint8 turnId) private{
         require(turnId<NUMBER_TURNS,"Number of turns bound exceeded!");
@@ -524,8 +496,6 @@ contract MastermindGame {
      * Function invoked by one of the participant after the closing of the dispute window in order to
      * manage the ending of a turn, hence assigning the earned points to the codeMaker of that turn 
      * and emit the event of turn completion. 
-     * @param matchId id of the match
-     * @param turnId  id of the turn
      */
     function endTurn(uint matchId, uint8 turnId) onlyMatchParticipant(matchId) onlyCodeBreaker(matchId, turnId) public{
         Match storage m=activeMatches[matchId];
@@ -560,25 +530,44 @@ contract MastermindGame {
         initializeTurn function will manage it*/
     }
     
-    //TODO: Implement
+    /**
+     * @notice Private function invoked by the function "endTurn" or the function "punish" in order
+     * to close the match and make the proper payments to the players.
+     * @param matchId id of the match to close
+     * @param fromPunishment boolean which indicates if the function call comes from "punish". In that 
+     * case all the match stake should be send to only one player.
+     */
     function endMatch(uint matchId, bool fromPunishment) private {
         Match storage m=activeMatches[matchId];
-
         if(!fromPunishment){
             //Decide the winner of the match
             if(m.score1==m.score2){ //tie
-                emit GameUtils.matchCompleted(matchId, address(0));
+                emit GameUtils.matchCompleted(matchId, address(0)); //In case of TIE the event will not specify a winning address
+
+                //Each player will have the amount that it has deposited as stake at the beginning of the match
+                (bool success,) = m.player2.call{value: m.stake}("");
+                require(success,"Final payment failed!");
+
+                (success,) = m.player1.call{value: m.stake}("");
+                require(success,"Final payment failed!");
             }else{
                 if(m.score1<m.score2){
                     emit GameUtils.matchCompleted(matchId, m.player1);
+
+                    (bool success,) = m.player1.call{value: m.stake}("");
+                    require(success,"Final payment failed!");
                 }else{
                     emit GameUtils.matchCompleted(matchId, m.player2);
+
+                    (bool success,) = m.player1.call{value: m.stake}("");
+                    require(success,"Final payment failed!");
                 }
             }
-            //TODO: Pay the winner (manage properly the tie)
+            
             dropTheMatch(matchId);
         }else{
-            //If the function is invoked from the punishment notifies the deletion of the match
+            /*If the function is invoked from the punishment, here we notify only the deletion of the match
+            because the payment has already been done in "punish".*/
             dropTheMatch(matchId);
             emit GameUtils.matchDeleted(matchId);
         }
@@ -631,7 +620,6 @@ contract MastermindGame {
      * @notice This function can be invoked by a participant of the match in order to notify the contract that
      * the opponent is AFK, hence the game is stucked due to his inactivity. An event is emitted
      * to trigger the opponent to perform the operation required.
-     * @param matchId Id of the match
      */
     function reportOpponentAFK(uint matchId) public onlyMatchParticipant(matchId){
         Match storage m=activeMatches[matchId];
@@ -650,6 +638,11 @@ contract MastermindGame {
         emit GameUtils.AFKreported(matchId, afkplayer);
     }
 
+    /**
+     * @notice Function invoked in order to get the match all the match stake when one of the 2 players
+     * is AFK for too much time. The action is possible only after have reported the AFK of that player and
+     * have waited a move from the afk player for a period of time. 
+     */
     function requestRefundForAFK(uint matchId) public onlyMatchParticipant(matchId){
         Match storage m=activeMatches[matchId];
         //Check that you have reported the AFK
@@ -663,27 +656,29 @@ contract MastermindGame {
             revert GameUtils.UnauthorizedOperation("AFK window still open");
 
         address afkplayer = (msg.sender==m.player1) ? m.player2 : m.player1;
+        emit GameUtils.AFKConfirmed(matchId, afkplayer);
         punish(matchId, afkplayer); //this function does the punishment and closes the match
     }
+
     /**
      * @notice Private function invoked by some other function in the contract when a cheating is detected.
      * The function sends the match stake to the honest player.
-     * @param matchId if of the match
      * @param who cheater player
      */
     function punish(uint matchId, address who) private{
         if(activeMatches[matchId].player1==address(0))
             revert GameUtils.MatchNotFound(matchId);
 
-        uint stake=activeMatches[matchId].stake;
+        Match storage m=activeMatches[matchId];
+        uint stake=m.stake;
         stake*=2; //double the stake because the honest player will obtain the stake of the cheater one
 
-        if(activeMatches[matchId].player1==who){
-            (bool success,) = activeMatches[matchId].player2.call{value: stake}("");
-            require(success,"Refund payment failed!");
+        if(m.player1==who){
+            (bool success,) = m.player2.call{value: stake}("");
+            require(success,"Punishment payment failed!");
         }else{
-            (bool success,) = activeMatches[matchId].player1.call{value: stake}("");
-            require(success,"Refund payment failed!");
+            (bool success,) = m.player1.call{value: stake}("");
+            require(success,"Punishment payment failed!");
         }
         
         endMatch(matchId,true);
@@ -705,6 +700,10 @@ contract MastermindGame {
         array.pop();
     }
 
+    /**
+     * @notice this modifier allows the operation at which it is attached only if
+     * the caller is the player who has created that match.
+     */
     modifier onlyMatchCreator(uint matchId) {
         if(activeMatches[matchId].player1==address(0))
             revert GameUtils.MatchNotFound(matchId);
@@ -713,6 +712,10 @@ contract MastermindGame {
         _;
     }
 
+    /**
+     * @notice this modifier allows the operation at which it is attached only if
+     * the caller is one of the 2 players of that match.
+     */
     modifier onlyMatchParticipant(uint matchId) {
         if(activeMatches[matchId].player1==address(0))
             revert GameUtils.MatchNotFound(matchId);
@@ -753,6 +756,9 @@ contract MastermindGame {
         _;
     }
 
+    /**
+     * @notice Function that removes an ended match from the list of the active ones.
+     */
     function dropTheMatch(uint matchId) private{
         if(activeMatches[matchId].player1==address(0))
             revert GameUtils.MatchNotFound(matchId);
@@ -760,6 +766,7 @@ contract MastermindGame {
         delete activeMatches[matchId];
     }
 
+    //-------GETTERS-------
     function getCodeMaker(uint matchId, uint turnId) public view returns (address){
         if(activeMatches[matchId].player1==address(0))
             revert GameUtils.MatchNotFound(matchId);
@@ -792,5 +799,30 @@ contract MastermindGame {
         scores[0]=activeMatches[matchId].score1;
         scores[1]=activeMatches[matchId].score2;
         return scores;
+    }
+
+    /**
+     * @notice Function return the address of the creator of the match whose id is "id". It fails if
+     * the give id is not related to any active match.
+     * @param matchId id of the match we are looking for
+     */
+    function getMatchCreator(uint matchId) public view returns (address){
+        if(activeMatches[matchId].player1==address(0))
+            revert GameUtils.MatchNotFound(matchId);
+        return activeMatches[matchId].player1;
+    }
+
+    /**
+     * @notice Function return the address of the second player of the match whose id is "id". It fails if
+     * the given id is not related to any active match or if that match is still waiting for an opponent.
+     * Notice that the match creator can have specified the address of the contender but he/she may have not
+     * already join the match.
+     * @param matchId id of the match we are looking for
+     */
+    function getSecondPlayer(uint matchId) public view returns (address){
+        if(activeMatches[matchId].player1==address(0))
+            revert GameUtils.MatchNotFound(matchId);
+        require(activeMatches[matchId].player2!=address(0),"This game is waiting for an opponent!"); 
+        return activeMatches[matchId].player2;
     }
 }

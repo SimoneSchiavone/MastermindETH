@@ -40,6 +40,10 @@ library GameUtils{
     event disputeWindowOpen(uint matchId, uint8 turnId, uint8 length);
     //notifies the opening of the dispute window providing also its length in blocks
     event AFKreported(uint matchId, address afkplayer);
+    //notifies the contract that probably that player is AFK
+    event AFKConfirmed(uint matchId, address afkplayer);
+    //The event notifies that the reported player did not take any action within the agreed time.
+
     //----------ERRORS----------
     error InvalidParameter(string which, string reason);
     error MatchNotFound(uint matchId);
@@ -50,5 +54,4 @@ library GameUtils{
     error MatchNotStarted(uint matchId);
     error TurnNotEnded(uint turnId);
     error TurnEnded(uint turnId);
-
 }

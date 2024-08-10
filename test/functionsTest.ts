@@ -1,5 +1,5 @@
 import { expect } from "chai";
-import {time, loadFixture} from "@nomicfoundation/hardhat-toolbox/network-helpers";
+import {loadFixture} from "@nomicfoundation/hardhat-toolbox/network-helpers";
 import hre, {ethers} from "hardhat";
 const {utils} = require("ethers");
 import { anyValue } from "@nomicfoundation/hardhat-chai-matchers/withArgs";
@@ -205,10 +205,6 @@ describe("MastermindGame Contract", function(){
         }
         return { owner, joiner, MastermindGame};
     }
-
-    async function matchOf5TurnCompletedWithATie() {
-        
-    }
     
     describe("Contract creation", function(){
         //Check that the assignment of the value is correct in case of right parameters
@@ -396,12 +392,14 @@ describe("MastermindGame Contract", function(){
                 //Match id will be 0 for the fist one created
                 await expect(MastermindGame.connect(addr1).setStakeValue(0,50)).to.revertedWithCustomError(MastermindGame,"UnauthorizedAccess").withArgs("You are not the creator of the match");
             })
+
             it("Should fail if the match stake is <=0", async function () {
                 const {owner, MastermindGame}=await loadFixture(publicMatchCreated);
             
                 //Match id will be 0 for the fist one created
                 await expect(MastermindGame.setStakeValue(0,0)).to.be.revertedWithCustomError(MastermindGame, "InvalidParameter").withArgs("stakeValue","=0");               
             })
+
             it("Should fail if called more than once", async function () {
                 const {owner, MastermindGame}=await loadFixture(publicMatchCreated);
             
@@ -409,6 +407,7 @@ describe("MastermindGame Contract", function(){
                 expect(await MastermindGame.setStakeValue(0,5)).not.to.be.reverted;
                 await expect(MastermindGame.setStakeValue(0,5)).to.be.revertedWithCustomError(MastermindGame,"DuplicateOperation").withArgs("Stake already fixed for that match");
             })
+
             it("Corretly sets the match stake",async function () {
                 const {owner, MastermindGame}=await loadFixture(publicMatchCreated);
 
@@ -1037,6 +1036,117 @@ describe("MastermindGame Contract", function(){
     })
 
     describe("AFK reporting",function(){
-        
+        it("Should fail if the AFKreport comes by someone not participating the game", async function () {
+            const {owner, joiner, MastermindGame}=await loadFixture(publicMatchStarted); 
+            const [a1, a2, a3]=await ethers.getSigners();
+            await expect((MastermindGame.connect(a3).reportOpponentAFK(0))).to.be.revertedWithCustomError(MastermindGame,"UnauthorizedAccess").withArgs("You are not a participant of the match");
+        })
+
+        it("Should fail if the AFKreport is called twice", async function () {
+            const {owner, joiner, MastermindGame}=await loadFixture(publicMatchStarted); 
+            if((await MastermindGame.getCodeMaker(0,0))==owner.address){
+                //CodeMaker has to publish the code hash
+                await expect((MastermindGame.connect(joiner).reportOpponentAFK(0))).not.to.be.reverted;
+                await expect((MastermindGame.connect(joiner).reportOpponentAFK(0))).to.be.revertedWithCustomError(MastermindGame,"DuplicateOperation").withArgs("AFK Already reported");
+                  
+            }else{
+                await expect((MastermindGame.reportOpponentAFK(0))).not.to.be.reverted;
+                await expect((MastermindGame.reportOpponentAFK(0))).to.be.revertedWithCustomError(MastermindGame,"DuplicateOperation").withArgs("AFK Already reported");
+            }
+        })
+
+        it("Should fail if it is called instead of doing the required operation for that turn", async function () {
+            const {owner, joiner, MastermindGame}=await loadFixture(publicMatchStarted); 
+            if((await MastermindGame.getCodeMaker(0,0))==owner.address){
+                //CodeMaker has to publish the code hash
+                await expect((MastermindGame.connect(joiner).reportOpponentAFK(0))).not.to.be.reverted;
+                await expect((MastermindGame.reportOpponentAFK(0))).to.be.revertedWithCustomError(MastermindGame,"UnauthorizedOperation").withArgs("Please do the next operation of the turn");
+                  
+            }else{
+                await expect((MastermindGame.reportOpponentAFK(0))).not.to.be.reverted;
+                await expect((MastermindGame.connect(joiner).reportOpponentAFK(0))).to.be.revertedWithCustomError(MastermindGame,"UnauthorizedOperation").withArgs("Please do the next operation of the turn");
+            }
+        })
+
+        it("Should correcly emit the event", async function () {
+            const {owner, joiner, MastermindGame}=await loadFixture(publicMatchStarted); 
+            //CodeMaker has to publish the code hash
+            if((await MastermindGame.getCodeMaker(0,0))==owner.address){
+                await expect((MastermindGame.connect(joiner).reportOpponentAFK(0))).to.emit(MastermindGame,"AFKreported").withArgs(0, owner.address);  
+            }else{
+                await expect((MastermindGame.reportOpponentAFK(0))).to.emit(MastermindGame,"AFKreported").withArgs(0, joiner.address);
+            }
+        })
+    })
+
+    describe("Refund for AFK", async function () {
+        it("Should fail if the AFKreport comes by someone not participating the game", async function () {
+            const {owner, joiner, MastermindGame}=await loadFixture(publicMatchStarted); 
+            const [a1, a2, a3]=await ethers.getSigners();
+            await expect((MastermindGame.connect(a3).requestRefundForAFK(0))).to.be.revertedWithCustomError(MastermindGame,"UnauthorizedAccess").withArgs("You are not a participant of the match");
+        })
+
+        it("Should fail if no AFK have been reported", async function () {
+            const {owner, joiner, MastermindGame}=await loadFixture(publicMatchStarted); 
+            if((await MastermindGame.getCodeMaker(0,0))==owner.address){
+                //CodeMaker has to publish the code hash
+                await expect((MastermindGame.connect(joiner).requestRefundForAFK(0))).to.be.revertedWithCustomError(MastermindGame,"UnauthorizedOperation").withArgs("You have not reported an AFK");
+            }else{
+                await expect((MastermindGame.requestRefundForAFK(0))).to.be.revertedWithCustomError(MastermindGame,"UnauthorizedOperation").withArgs("You have not reported an AFK");
+            }
+        })
+
+        it("Should fail if the AFK window is still open, hence you need to wait for a move", async function () {
+            const {owner, joiner, MastermindGame}=await loadFixture(publicMatchStarted); 
+            if((await MastermindGame.getCodeMaker(0,0))==owner.address){
+                //CodeMaker has to publish the code hash
+                await expect((MastermindGame.connect(joiner).reportOpponentAFK(0))).not.to.be.reverted;
+                await expect((MastermindGame.connect(joiner).requestRefundForAFK(0))).to.be.revertedWithCustomError(MastermindGame,"UnauthorizedOperation").withArgs("AFK window still open");
+            }else{
+                await expect((MastermindGame.reportOpponentAFK(0))).not.to.be.reverted;
+                await expect((MastermindGame.requestRefundForAFK(0))).to.be.revertedWithCustomError(MastermindGame,"UnauthorizedOperation").withArgs("AFK window still open");
+            }
+        })
+
+        it("Should fail if the AFK has been closed due to an action of the opponent", async function () {
+            const {owner, joiner, MastermindGame}=await loadFixture(publicMatchStarted); 
+            if((await MastermindGame.getCodeMaker(0,0))==owner.address){
+                //CodeMaker has to publish the code hash
+                await expect((MastermindGame.connect(joiner).reportOpponentAFK(0))).not.to.be.reverted;
+                const code="ARBGR";
+                const digest=await ethers.keccak256(ethers.toUtf8Bytes(code));
+                await expect(MastermindGame.publishCodeHash(0, 0, digest)).not.to.be.reverted;
+                await expect((MastermindGame.connect(joiner).requestRefundForAFK(0))).to.be.revertedWithCustomError(MastermindGame,"UnauthorizedOperation").withArgs("AFK window closed");
+            }else{
+                await expect((MastermindGame.reportOpponentAFK(0))).not.to.be.reverted;
+                const code="ARBGR";
+                const digest=await ethers.keccak256(ethers.toUtf8Bytes(code));
+                await expect(MastermindGame.connect(joiner).publishCodeHash(0, 0, digest)).not.to.be.reverted;
+                await expect((MastermindGame.requestRefundForAFK(0))).to.be.revertedWithCustomError(MastermindGame,"UnauthorizedOperation").withArgs("AFK window closed");
+            }
+        })
+
+        it("Should correctly emit the event and perform the punishment", async function () {
+            const {owner, joiner, MastermindGame}=await loadFixture(publicMatchStarted); 
+            if((await MastermindGame.getCodeMaker(0,0))==owner.address){
+                //CodeMaker has to publish the code hash
+                await expect((MastermindGame.connect(joiner).reportOpponentAFK(0))).not.to.be.reverted;
+                await hre.network.provider.send("hardhat_mine", ["0xA"]); //mine 10 "dummy" blocks   
+                const tx= await MastermindGame.connect(joiner).requestRefundForAFK(0);
+                expect (tx).not.to.be.reverted;
+                expect (tx).to.emit(MastermindGame, "AFKConformid").withArgs(0, owner.address);
+                expect (tx).to.emit(MastermindGame, "matchDeleted").withArgs(0);
+                expect (tx).to.changeEtherBalance(joiner, 10); //match stake was 5
+            }else{
+                //CodeMaker has to publish the code hash
+                await expect((MastermindGame.reportOpponentAFK(0))).not.to.be.reverted;
+                await hre.network.provider.send("hardhat_mine", ["0xA"]); //mine 10 "dummy" blocks   
+                const tx= await MastermindGame.requestRefundForAFK(0);
+                expect (tx).not.to.be.reverted;
+                expect (tx).to.emit(MastermindGame, "AFKConformid").withArgs(0, joiner.address);
+                expect (tx).to.emit(MastermindGame, "matchDeleted").withArgs(0);
+                expect (tx).to.changeEtherBalance(owner, 10); //match stake was 5
+            }
+        })
     })
 })
