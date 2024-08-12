@@ -8,6 +8,8 @@ describe("MastermindGame Contract", function(){
     const FIVE_MINUTES_IN_SECONDS=300;
     const colors=4; 
     const codesize=5;
+    const turns=4;
+    const guesses=5;
     const reward=5;
 
     async function onlyDeployFixture() {
@@ -23,7 +25,7 @@ describe("MastermindGame Contract", function(){
         });
         
         //const MastermindGame = await MastermindGame_factory.deploy(colors, codesize, reward)
-        const MastermindGame = await MastermindGame_factory.deploy(codesize, reward);
+        const MastermindGame = await MastermindGame_factory.deploy(codesize, reward, turns, guesses);
 
         return{ owner, MastermindGame}
     }
@@ -211,30 +213,13 @@ describe("MastermindGame Contract", function(){
         it("Constructor should initialize the game parameters", async function () {
             const {owner, MastermindGame}=await loadFixture(onlyDeployFixture);
             expect(await MastermindGame.codeSize()).to.equal(codesize);
-            //expect(await MastermindGame.availableColors()).to.equal(colors);
             expect(await MastermindGame.extraReward()).to.equal(reward);
-            expect(await MastermindGame.gameManager()).to.equal(owner);
+            expect(await MastermindGame.numberTurns()).to.equal(turns);
+            expect(await MastermindGame.numberGuesses()).to.equal(guesses);
         })
-
-        //Check the reversion in case of contract creation with incorrect parameter
-        /*
-        it("Constructor should fails with color <=1", async function () {
-            const [owner, otherAccount] =await hre.ethers.getSigners();
-            
-            const Lib = await ethers.getContractFactory("Utils");
-            const lib = await Lib.deploy();
-            let add:string=await lib.getAddress();
-            const MastermindGame_factory = await ethers.getContractFactory("MastermindGame", {
-                libraries: {
-                    Utils: add,
-                },
-            });
-            await expect(MastermindGame_factory.deploy(0, codesize, reward)).to.be.revertedWith("The number of available colors should be greater than 1!");
-        })*/
 
         it("Constructor should fails with code size <=1", async function () {
             const [owner, otherAccount] =await hre.ethers.getSigners();
-        
             const Lib = await ethers.getContractFactory("Utils");
             const lib = await Lib.deploy();
             let add:string=await lib.getAddress();
@@ -243,13 +228,11 @@ describe("MastermindGame Contract", function(){
                     Utils: add,
                 },
             });
-            //await expect(MastermindGame_factory.deploy(0, reward)).to.be.revertedWithCustomError(MastermindGame_factory,"InvalidParameter");
-            await expect(MastermindGame_factory.deploy( 0, reward)).to.be.revertedWith("The code size should be greater than 1!");
+            await expect(MastermindGame_factory.deploy( 0, reward, turns, guesses)).to.be.revertedWithCustomError(MastermindGame_factory,"InvalidParameter").withArgs("codeSize","<=1");
         })
 
         it("Constructor should fails with reward <=0", async function () {
             const [owner, otherAccount] =await hre.ethers.getSigners();
-        
             const Lib = await ethers.getContractFactory("Utils");
             const lib = await Lib.deploy();
             let add:string=await lib.getAddress();
@@ -258,9 +241,33 @@ describe("MastermindGame Contract", function(){
                     Utils: add,
                 },
             });
-            
-            //await expect(MastermindGame_factory.deploy(colors, codesize, 0)).to.be.revertedWith("The extra reward for the code maker has to be greater than 0!");
-            await expect(MastermindGame_factory.deploy(codesize, 0)).to.be.revertedWith("The extra reward for the code maker has to be greater than 0!");
+            await expect(MastermindGame_factory.deploy(codesize, 0, turns, guesses)).to.be.revertedWithCustomError(MastermindGame_factory,"InvalidParameter").withArgs("extraReward","=0");
+        })
+
+        it("Constructor should fails with numberTurns <=0", async function () {
+            const [owner, otherAccount] =await hre.ethers.getSigners();
+            const Lib = await ethers.getContractFactory("Utils");
+            const lib = await Lib.deploy();
+            let add:string=await lib.getAddress();
+            const MastermindGame_factory = await ethers.getContractFactory("MastermindGame", {
+                libraries: {
+                    Utils: add,
+                },
+            });
+            await expect(MastermindGame_factory.deploy(codesize, reward, 0, guesses)).to.be.revertedWithCustomError(MastermindGame_factory,"InvalidParameter").withArgs("numberTurns","=0");
+        })
+
+        it("Constructor should fails with numberGuesses <=0", async function () {
+            const [owner, otherAccount] =await hre.ethers.getSigners();
+            const Lib = await ethers.getContractFactory("Utils");
+            const lib = await Lib.deploy();
+            let add:string=await lib.getAddress();
+            const MastermindGame_factory = await ethers.getContractFactory("MastermindGame", {
+                libraries: {
+                    Utils: add,
+                },
+            });
+            await expect(MastermindGame_factory.deploy(codesize, reward, 0, guesses)).to.be.revertedWithCustomError(MastermindGame_factory,"InvalidParameter").withArgs("numberTurns","=0");
         })
     })
 

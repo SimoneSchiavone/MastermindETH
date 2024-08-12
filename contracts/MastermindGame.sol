@@ -20,13 +20,13 @@ contract MastermindGame {
     string public availableColors="ABCGPRTVWY"; //number of colors usable in the code
     uint8 public codeSize; //size of the code
     uint8 public extraReward;  //extra reward for the code maker if the code breaker is not able to guess the code.
-    uint8 constant NUMBER_TURNS=4;
-    uint8 constant NUMBER_GUESSES=5;
+    uint8 public numberTurns;
+    uint8 public numberGuesses;
 
     //---DEADLINES---
-    uint8 public constant STAKEPAYMENTDEADLINE = 25; //25 blocks, about 5 minutes
-    uint8 public constant DISPUTEWINDOWLENGTH= 10; //10 blocks, about 2 minutes
-    uint8 public constant AFKWINDOWLENGTH= 10; //10 blocks, about 2 minutes
+    uint8 constant STAKEPAYMENTDEADLINE = 25; //25 blocks, about 5 minutes
+    uint8 constant DISPUTEWINDOWLENGTH= 10; //10 blocks, about 2 minutes
+    uint8 constant AFKWINDOWLENGTH= 10; //10 blocks, about 2 minutes
 
     
 
@@ -69,31 +69,34 @@ contract MastermindGame {
     }
 
     mapping(uint => Match) public activeMatches; //maps an active matchId to the players addresses
-    uint[] publicMatchesWaitingForAnOpponent; 
+    uint[] public publicMatchesWaitingForAnOpponent; 
     //array of the matchesIDs of matches without "player2" specified waiting for a player
-    uint[] privateMatchesWaitingForAnOpponent; 
+    uint[] public privateMatchesWaitingForAnOpponent; 
     //array of the matchesIDs of matches specified waiting for a specific player
 
-    uint activeMatchesNum=0; //counts active matches
+    uint public activeMatchesNum=0; //counts active matches
     uint private nextMatchId=0; //matchId generation
 
     /**
      * @notice Constructor function of the contract
      * @param _codeSize code size
-     * @param _noGuessedReward extra reward for the code maker
+     * @param _extraReward extra reward for the code maker
      */
-    constructor( uint8 _codeSize, uint8 _noGuessedReward){
-        //require(_availableColors.length==10,"The number of available colors should be 10!");
-        require(_codeSize!=0,"The code size should be greater than 1!");
-        require(_noGuessedReward!=0,"The extra reward for the code maker has to be greater than 0!");
-        /*
-        if(_codeSize==0)
-            revert InvalidParameter("codeSize","=0");
-        if(extraReward==0)
-            revert InvalidParameter("ExtraReward","=0");*/
-        //availableColors=_availableColors;
+    constructor( uint8 _codeSize, uint8 _extraReward, uint8 _numberTurns, uint8 _numberGuesses){
+
+        if(_codeSize<1)
+            revert GameUtils.InvalidParameter("codeSize","<=1");
+        if(_extraReward==0)
+            revert GameUtils.InvalidParameter("extraReward","=0");
+        if(_numberTurns==0)
+            revert GameUtils.InvalidParameter("numberTurns","=0");
+        if(_numberGuesses==0)
+            revert GameUtils.InvalidParameter("numberGuesses","=0");
+
         codeSize=_codeSize;
-        extraReward=_noGuessedReward;
+        extraReward=_extraReward;
+        numberTurns=_numberTurns;
+        numberGuesses=_numberGuesses;
         gameManager=msg.sender;
     }
 
@@ -300,7 +303,7 @@ contract MastermindGame {
      * the stake payment from both the game participant.
      */
     function initializeTurn(uint matchId, uint8 turnId) private{
-        require(turnId<NUMBER_TURNS,"Number of turns bound exceeded!");
+        require(turnId<numberTurns,"Number of turns bound exceeded!");
         //no further checks on matchId since this function is invoked from other "safe" functions
         Match storage m=activeMatches[matchId]; 
         
@@ -374,7 +377,7 @@ contract MastermindGame {
 
         Turn storage t=m.turns[turnId]; //actual turn
         //CONTROLLO NON NECESSARIO PERCHè' ALL'ULTIMO TENTATIVO IL TURNO TERMINA
-        require(t.codeProposals.length<NUMBER_GUESSES,"Too many attempts for this turn!");
+        require(t.codeProposals.length<numberGuesses,"Too many attempts for this turn!");
         if(t.isSuspended){
             revert GameUtils.UnauthorizedOperation("Turn suspended, no more guesses admitted");
         }
@@ -434,7 +437,7 @@ contract MastermindGame {
             m.whoHasToDoTheNextOp=t.codeMaker; //next move should be the secret publication from the codeMaker
             return;
         }
-        if(t.codeProposals.length==NUMBER_GUESSES){ //CodeMaker has won the turn because the codeBreaker has exhausted its attempts
+        if(t.codeProposals.length==numberGuesses){ //CodeMaker has won the turn because the codeBreaker has exhausted its attempts
             t.isSuspended=true;
             emit GameUtils.secretRequired(matchId, turnId,false, t.codeMaker);
 
@@ -520,7 +523,7 @@ contract MastermindGame {
 
         emit GameUtils.turnCompleted(matchId, turnId, earned, t.codeMaker);
 
-        if(m.turns.length<NUMBER_TURNS){ //Turn bound not reached, start another game
+        if(m.turns.length<numberTurns){ //Turn bound not reached, start another game
             initializeTurn(matchId, turnId+1);
         }else{ //Turn bound reached, close the match
             endMatch(matchId, false);
