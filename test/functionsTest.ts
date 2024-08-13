@@ -24,9 +24,7 @@ describe("MastermindGame Contract", function(){
             },
         });
         
-        //const MastermindGame = await MastermindGame_factory.deploy(colors, codesize, reward)
         const MastermindGame = await MastermindGame_factory.deploy(codesize, reward, turns, guesses);
-
         return{ owner, MastermindGame}
     }
 
@@ -427,6 +425,7 @@ describe("MastermindGame Contract", function(){
 
                 await expect(MastermindGame.depositStake(0)).to.be.revertedWithCustomError(MastermindGame,"InvalidParameter").withArgs("WEI sent", "=0");
             })
+
             it("Fails if called by someone not participating in that game", async function () {
                 const {owner, joiner, MastermindGame}=await loadFixture(publicMatchBothJoined);
                 const [own, addr1,addr2]= await ethers.getSigners();
@@ -434,12 +433,14 @@ describe("MastermindGame Contract", function(){
                 //Addr2 is not a member of that game
                 await expect(MastermindGame.connect(addr2).depositStake(0, {value: 1})).to.be.revertedWithCustomError(MastermindGame,"UnauthorizedAccess").withArgs("You are not a participant of the match");
             })
+
             it("Fails if the amount sent differs from the one agreed by the players.", async function () {
                 const {owner, MastermindGame}=await loadFixture(publicMatchCreated);
                 await MastermindGame.setStakeValue(0,5);
                 //agreed 5 sent 1
                 await expect(MastermindGame.depositStake(0, {value: 1})).to.be.revertedWithCustomError(MastermindGame,"InvalidParameter").withArgs("WEI sent", "!= agreed stake");
             })
+
             it("Fails in case of multiple payments from the same user",async function () {
                 const {owner, MastermindGame}=await loadFixture(publicMatchCreated);
                 const [own, addr1]=await ethers.getSigners();
@@ -451,6 +452,7 @@ describe("MastermindGame Contract", function(){
                 //Player sends its funds
                 await expect(MastermindGame.depositStake(0, {value: 5})).to.be.revertedWithCustomError(MastermindGame, "DuplicateOperation").withArgs("WEI already sent");
             })
+
             it("Properly manages the payments from the players",async function () {
                 const {owner, joiner, MastermindGame}=await loadFixture(publicMatchBothJoined);
                 
@@ -461,6 +463,7 @@ describe("MastermindGame Contract", function(){
                 //Player sends its funds
                 await expect(MastermindGame.connect(joiner).depositStake(0, {value: 5})).to.emit(MastermindGame,"matchStakeDeposited").withArgs(0);
             })
+
             it("Properly creates a new match as soon as both have deposited the stake",async function () {
                 const {owner, joiner, MastermindGame}=await loadFixture(publicMatchBothJoined);
                 
@@ -472,6 +475,7 @@ describe("MastermindGame Contract", function(){
                 await expect(MastermindGame.connect(joiner).depositStake(0, {value: 5})).to.emit(MastermindGame,"matchStakeDeposited").withArgs(0).and.to.emit(MastermindGame,"newTurnStarted").withArgs(0, 0, anyValue);
             })
         })
+
         describe("Allow to request the refund of the stake payed in case one of the player doesn't pay within the deadline", async function () {
             it("Fails if called by someone not participating in that game", async function () {
                 const {owner, joiner, MastermindGame}=await loadFixture(publicMatchCreatorDeposited);
@@ -479,6 +483,7 @@ describe("MastermindGame Contract", function(){
                 //Addr2 is not a member of that game
                 await expect(MastermindGame.connect(addr2).requestRefundMatchStake(0)).to.be.revertedWithCustomError(MastermindGame,"UnauthorizedAccess").withArgs("You are not a participant of the match");
             })
+            
             it("Fails if a wrong matchId is passed", async function () {
                 const {owner, joiner, MastermindGame}=await loadFixture(publicMatchCreatorDeposited);
                 const [own, addr1,addr2]= await ethers.getSigners();
@@ -1141,7 +1146,7 @@ describe("MastermindGame Contract", function(){
                 await hre.network.provider.send("hardhat_mine", ["0xA"]); //mine 10 "dummy" blocks   
                 const tx= await MastermindGame.connect(joiner).requestRefundForAFK(0);
                 expect (tx).not.to.be.reverted;
-                expect (tx).to.emit(MastermindGame, "AFKConformid").withArgs(0, owner.address);
+                expect (tx).to.emit(MastermindGame, "AFKconfirmed").withArgs(0, owner.address);
                 expect (tx).to.emit(MastermindGame, "matchDeleted").withArgs(0);
                 expect (tx).to.changeEtherBalance(joiner, 10); //match stake was 5
             }else{
@@ -1150,7 +1155,7 @@ describe("MastermindGame Contract", function(){
                 await hre.network.provider.send("hardhat_mine", ["0xA"]); //mine 10 "dummy" blocks   
                 const tx= await MastermindGame.requestRefundForAFK(0);
                 expect (tx).not.to.be.reverted;
-                expect (tx).to.emit(MastermindGame, "AFKConformid").withArgs(0, joiner.address);
+                expect (tx).to.emit(MastermindGame, "AFKconfirmed").withArgs(0, joiner.address);
                 expect (tx).to.emit(MastermindGame, "matchDeleted").withArgs(0);
                 expect (tx).to.changeEtherBalance(owner, 10); //match stake was 5
             }

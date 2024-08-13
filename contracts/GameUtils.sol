@@ -41,7 +41,7 @@ library GameUtils{
     //notifies the opening of the dispute window providing also its length in blocks
     event AFKreported(uint matchId, address afkplayer);
     //notifies the contract that probably that player is AFK
-    event AFKConfirmed(uint matchId, address afkplayer);
+    event AFKconfirmed(uint matchId, address afkplayer);
     //The event notifies that the reported player did not take any action within the agreed time.
 
     //----------ERRORS----------

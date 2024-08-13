@@ -276,8 +276,6 @@ contract MastermindGame {
      */
     function requestRefundMatchStake(uint matchId) onlyMatchParticipant(matchId) public {
         Match storage m=activeMatches[matchId];
-        if(activeMatches[matchId].player1==address(0))
-            revert GameUtils.MatchNotFound(matchId);
         require((!m.deposit1)||(!m.deposit2),"Both players have put their funds in stake!");
 
         //The caller has to have done the payment before, otherwise cannot request the refund
@@ -659,7 +657,7 @@ contract MastermindGame {
             revert GameUtils.UnauthorizedOperation("AFK window still open");
 
         address afkplayer = (msg.sender==m.player1) ? m.player2 : m.player1;
-        emit GameUtils.AFKConfirmed(matchId, afkplayer);
+        emit GameUtils.AFKconfirmed(matchId, afkplayer);
         punish(matchId, afkplayer); //this function does the punishment and closes the match
     }
 
