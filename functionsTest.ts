@@ -992,6 +992,7 @@ describe("MastermindGame Contract", function(){
             }
         })
 
+        /*
         it("Should fail if the dispute window is still open", async function(){
             const {owner, joiner, MastermindGame}=await loadFixture(publicTurnSuspendedSecretPublished); 
             //This function can be called by one of the participant
@@ -1001,7 +1002,7 @@ describe("MastermindGame Contract", function(){
                  await expect(MastermindGame.endTurn(0,0)).to.be.revertedWithCustomError(MastermindGame, "UnauthorizedOperation").withArgs("Dispute window is still open");
             }
             
-        })
+        })*/
 
         it("Should fail if wrong parameter are passed (unexisting match/turn)", async function(){
             const {owner, joiner, MastermindGame}=await loadFixture(publicTurnSuspendedSecretPublished); 

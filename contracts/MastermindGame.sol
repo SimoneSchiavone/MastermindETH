@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.24;
 
-// Uncomment this line to use console.log
 import "hardhat/console.sol";
 import "./Utils.sol";
 import "./GameUtils.sol";
@@ -464,7 +463,6 @@ contract MastermindGame {
         if(bytes(secret).length==0){
             revert GameUtils.InvalidParameter("secret","Empty string");
         }
-
         if(!Utils.containsCharsOf(availableColors, secret))
             revert GameUtils.InvalidParameter("secret","Invalid color in the code");
 
@@ -500,15 +498,14 @@ contract MastermindGame {
      */
     function endTurn(uint matchId, uint8 turnId) onlyMatchParticipant(matchId) onlyCodeBreaker(matchId, turnId) public{
         Match storage m=activeMatches[matchId];
-        if(m.turns.length<=turnId)
-            revert GameUtils.TurnNotFound(turnId);
 
         Turn storage t=m.turns[turnId];
-        if(!t.isSuspended || bytes(t.secret).length==0) //Case match not suspended or secret not provided
+        if((t.isSuspended==false) || bytes(t.secret).length==0) //Case match not suspended or secret not provided
             revert GameUtils.UnauthorizedOperation("Turn not terminable");
 
-        if(block.number<t.disputeWindowOpening+DISPUTEWINDOWLENGTH)
-            revert GameUtils.UnauthorizedOperation("Dispute window is still open");
+        /* QUESTO CONTROLLO NON SERVE. ORA IL PARTECIPANTE CHE FA END TURN e' sicuro che non farà disputa. è una conferma
+        if(block.number<t.disputeWindowOpening+DISPUTEWINDOWLENGTH) 
+            revert GameUtils.UnauthorizedOperation("Dispute window is still open");*/
 
         uint8 earned=uint8(t.codeProposals.length);
         earned = !(t.codeGuessed) ? earned+extraReward : earned-1; //the last code proposed is correct hence it's not a failure to consider
@@ -823,7 +820,8 @@ contract MastermindGame {
     function getSecondPlayer(uint matchId) public view returns (address){
         if(activeMatches[matchId].player1==address(0))
             revert GameUtils.MatchNotFound(matchId);
-        require(activeMatches[matchId].player2!=address(0),"This game is waiting for an opponent!"); 
+        if(activeMatches[matchId].player2==address(0))
+            revert GameUtils.Player2NotJoinedYet(); 
         return activeMatches[matchId].player2;
     }
 }
