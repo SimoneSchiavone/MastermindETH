@@ -205,6 +205,16 @@ describe("MastermindGame Contract", function(){
         }
         return { owner, joiner, MastermindGame};
     }
+
+    async function firstTurnConcluded() {
+        const {owner, joiner, MastermindGame}=await loadFixture(publicTurnSuspendedSecretPublished);       
+        if((await MastermindGame.getCodeMaker(0,0))==owner.address){
+            await expect(MastermindGame.connect(joiner).endTurn(0, 0)).to.emit(MastermindGame, "turnCompleted").withArgs(0, anyValue, anyValue, anyValue);
+        }else{
+            await expect(MastermindGame.endTurn(0, 0)).to.emit(MastermindGame, "turnCompleted").withArgs(0, anyValue, anyValue, anyValue);
+        }
+        return { owner, joiner, MastermindGame};
+    }
     
     describe("Contract creation", function(){
         //Check that the assignment of the value is correct in case of right parameters
@@ -265,7 +275,7 @@ describe("MastermindGame Contract", function(){
                     Utils: add,
                 },
             });
-            await expect(MastermindGame_factory.deploy(codesize, reward, 0, guesses)).to.be.revertedWithCustomError(MastermindGame_factory,"InvalidParameter").withArgs("numberTurns","=0");
+            await expect(MastermindGame_factory.deploy(codesize, reward, turns, 0)).to.be.revertedWithCustomError(MastermindGame_factory,"InvalidParameter").withArgs("numberGuesses","=0");
         })
     })
 
@@ -303,6 +313,14 @@ describe("MastermindGame Contract", function(){
                 
                 expect(await MastermindGame.getMatchCreator(0)).to.equal(owner.address);
                 expect(await MastermindGame.getSecondPlayer(0)).to.equal(addr1.address);
+            })
+
+            it("It should fail if a wrong opponent address is passed", async function () {
+                const {owner, MastermindGame}=await loadFixture(onlyDeployFixture);
+                //Case address zero
+                await expect(MastermindGame.createPrivateMatch(ethers.ZeroAddress)).to.be.revertedWithCustomError(MastermindGame, "InvalidParameter").withArgs("opponent", "=0");
+                //Case private match with ourself
+                await expect(MastermindGame.createPrivateMatch(owner.address)).to.be.revertedWithCustomError(MastermindGame, "InvalidParameter").withArgs("opponent", "=yourself");
             })
         })
         
@@ -404,6 +422,13 @@ describe("MastermindGame Contract", function(){
                 //Match id will be 0 for the fist one created
                 await expect(MastermindGame.setStakeValue(0,0)).to.be.revertedWithCustomError(MastermindGame, "InvalidParameter").withArgs("stakeValue","=0");               
             })
+
+            it("Should fail if the match does not exists", async function () {
+                const {owner, MastermindGame}=await loadFixture(publicMatchCreated);
+            
+                //Match id will be 0 for the fist one created
+                await expect(MastermindGame.setStakeValue(5, 5)).to.be.revertedWithCustomError(MastermindGame, "MatchNotFound").withArgs(5);               
+            }) 
 
             it("Should fail if called more than once", async function () {
                 const {owner, MastermindGame}=await loadFixture(publicMatchCreated);
@@ -522,6 +547,16 @@ describe("MastermindGame Contract", function(){
             await expect(MastermindGame.connect(addr2).publishCodeHash(0,0,digest)).to.be.revertedWithCustomError(MastermindGame,"UnauthorizedAccess").withArgs("You are not a participant of the match");
         })
 
+        it("Should fail if the match does not exists",async function(){
+            const {owner, MastermindGame}=await loadFixture(publicMatchCreatorDeposited);
+            const [own, addr1]= await ethers.getSigners();
+            
+            const code="ARBGR";
+            const digest=await ethers.keccak256(ethers.toUtf8Bytes(code));
+            //Turn 0 of match 0
+            await expect(MastermindGame.connect(addr1).publishCodeHash(5, 0, digest)).to.be.revertedWithCustomError(MastermindGame,"MatchNotFound").withArgs(5);
+        })
+
         it("Should fail if the match is not started yet",async function(){
             const {owner, MastermindGame}=await loadFixture(publicMatchCreatorDeposited);
             const [own, addr1]= await ethers.getSigners();
@@ -530,6 +565,19 @@ describe("MastermindGame Contract", function(){
             const digest=await ethers.keccak256(ethers.toUtf8Bytes(code));
             //Turn 0 of match 0
             await expect(MastermindGame.connect(addr1).publishCodeHash(0,0,digest)).to.be.revertedWithCustomError(MastermindGame,"MatchNotStarted").withArgs(0);
+        })
+
+        it("Should fail if the match is already finished",async function(){
+            const {owner, MastermindGame}=await loadFixture(firstTurnConcluded);
+            const [own, addr1]= await ethers.getSigners();
+            
+            const code="ARBGR";
+            const digest=await ethers.keccak256(ethers.toUtf8Bytes(code));
+            if(await MastermindGame.getCodeMaker(0, 0)==owner.address){
+                await expect(MastermindGame.publishCodeHash(0,0,digest)).to.be.revertedWithCustomError(MastermindGame,"TurnEnded").withArgs(0);
+            }else{
+                await expect(MastermindGame.connect(addr1).publishCodeHash(0,0,digest)).to.be.revertedWithCustomError(MastermindGame,"TurnEnded").withArgs(0);
+            }
         })
 
         it("Should fail if the matchId does not exists",async function(){
@@ -599,10 +647,35 @@ describe("MastermindGame Contract", function(){
             await expect(MastermindGame.connect(joiner).guessTheCode(0,0,guess)).to.be.revertedWithCustomError(MastermindGame,"MatchNotStarted").withArgs(0);
         })
 
+        it("Should fail if the match is already finished",async function(){
+            const {owner, MastermindGame}=await loadFixture(firstTurnConcluded);
+            const [own, addr1]= await ethers.getSigners();
+            const guess="BBRAV";
+            if(await MastermindGame.getCodeMaker(0, 0)==owner.address){
+                await expect(MastermindGame.connect(addr1).guessTheCode(0, 0, guess)).to.be.revertedWithCustomError(MastermindGame,"TurnEnded").withArgs(0);
+            }else{
+                await expect(MastermindGame.guessTheCode(0, 0, guess)).to.be.revertedWithCustomError(MastermindGame,"TurnEnded").withArgs(0);
+            }
+        })
+
         it("Should fail if the matchId does not exists",async function(){
             const {owner, joiner, MastermindGame}=await loadFixture(publicTurnHashPublished);
             const guess="BBRAV";
             await expect(MastermindGame.guessTheCode(4,0,guess)).to.revertedWithCustomError(MastermindGame, "MatchNotFound").withArgs(4);
+        })
+
+        it("Should fail if the match is already suspended",async function(){
+            const {owner, joiner, MastermindGame}=await loadFixture(publicTurnAlmostConcluded_Guessed);
+            const guess="BBRAV";
+            if((await MastermindGame.getCodeMaker(0,0))==owner.address){
+                //The codemaker is 'owner' hence it cannot guess
+                await expect(MastermindGame.connect(joiner).guessTheCode(0, 0, guess)).to.revertedWithCustomError(MastermindGame, "UnauthorizedOperation").withArgs("Turn suspended, no more guesses admitted");
+            }else{
+                //The codemaker is 'joiner' hence it cannot guess
+                await expect(MastermindGame.guessTheCode(0, 0, guess)).to.revertedWithCustomError(MastermindGame, "UnauthorizedOperation").withArgs("Turn suspended, no more guesses admitted");
+            }
+
+            
         })
 
         it("Should fail if the caller is not the codeBreaker of the turn",async function(){
@@ -700,6 +773,17 @@ describe("MastermindGame Contract", function(){
             await expect(MastermindGame.connect(joiner).publishFeedback(0, 0, 2, 0)).to.be.revertedWithCustomError(MastermindGame,"MatchNotStarted").withArgs(0);
         })
 
+        it("Should fail if the match is already finished",async function(){
+            const {owner, MastermindGame}=await loadFixture(firstTurnConcluded);
+            const [own, addr1]= await ethers.getSigners();
+            const guess="BBRAV";
+            if(await MastermindGame.getCodeMaker(0, 0)==owner.address){
+                await expect(MastermindGame.publishFeedback(0, 0, 0, 0)).to.be.revertedWithCustomError(MastermindGame,"TurnEnded").withArgs(0);
+            }else{
+                await expect(MastermindGame.connect(addr1).publishFeedback(0, 0, 0, 0)).to.be.revertedWithCustomError(MastermindGame,"TurnEnded").withArgs(0);
+            }
+        })
+
         it("Should fail if the matchId does not exists",async function(){
             const {owner, joiner, MastermindGame}=await loadFixture(publicTurnHashPublished);
             await expect(MastermindGame.publishFeedback(4, 0, 2, 0)).to.revertedWithCustomError(MastermindGame, "MatchNotFound").withArgs(4);
@@ -778,7 +862,7 @@ describe("MastermindGame Contract", function(){
 
     describe("Secret publication by the codeMaker and dispute window opening", function(){
         it("Should fail if the guess of the code is published by someone not partecipating in the game",async function(){
-            const {owner, joiner, MastermindGame}=await loadFixture(publicTurnHashPublished);
+            const {owner, joiner, MastermindGame}=await loadFixture(publicTurnAlmostConcluded_Guessed);
             const [own, addr1, addr2]= await ethers.getSigners();
             await expect(MastermindGame.connect(addr2).publishSecret(0, 0, "ARBGR")).to.be.revertedWithCustomError(MastermindGame,"UnauthorizedAccess").withArgs("You are not a participant of the match");
         })
@@ -789,17 +873,33 @@ describe("MastermindGame Contract", function(){
                 await expect(MastermindGame.publishSecret(0, 0, "ARBGR")).to.be.revertedWithCustomError(MastermindGame,"TurnNotEnded").withArgs(0);
             }else{
                 await expect(MastermindGame.connect(joiner).publishSecret(0, 0, "ARBGR")).to.be.revertedWithCustomError(MastermindGame,"TurnNotEnded").withArgs(0);
-            
+            }
+        })
+        
+        it("Should fail if the match does not exists",async function(){
+            const {owner, joiner, MastermindGame}=await loadFixture(publicTurnAlmostConcluded_Guessed);
+            if((await MastermindGame.getCodeMaker(0,0))==owner.address){
+                await expect(MastermindGame.publishSecret(5, 0, "ARBGZ")).to.be.revertedWithCustomError(MastermindGame,"MatchNotFound").withArgs(5);
+            }else{
+                await expect(MastermindGame.connect(joiner).publishSecret(5, 0, "ARBGZ")).to.be.revertedWithCustomError(MastermindGame,"MatchNotFound").withArgs(5);
+            }
+        })
+
+        it("Should fail if the match turn does not exists",async function(){
+            const {owner, joiner, MastermindGame}=await loadFixture(publicTurnAlmostConcluded_Guessed);
+            if((await MastermindGame.getCodeMaker(0,0))==owner.address){
+                await expect(MastermindGame.publishSecret(0, 5, "ARBGZ")).to.be.revertedWithCustomError(MastermindGame,"TurnNotFound").withArgs(5);
+            }else{
+                await expect(MastermindGame.connect(joiner).publishSecret(0, 5, "ARBGZ")).to.be.revertedWithCustomError(MastermindGame,"TurnNotFound").withArgs(5);
             }
         })
 
         it("Should fail if the secret code is invalid",async function(){
-            const {owner, joiner, MastermindGame}=await loadFixture(publicTurnHashPublished);
+            const {owner, joiner, MastermindGame}=await loadFixture(publicTurnAlmostConcluded_Guessed);
             if((await MastermindGame.getCodeMaker(0,0))==owner.address){
                 await expect(MastermindGame.publishSecret(0, 0, "ARBGZ")).to.be.revertedWithCustomError(MastermindGame,"InvalidParameter").withArgs("secret","Invalid color in the code");
             }else{
                 await expect(MastermindGame.connect(joiner).publishSecret(0, 0, "ARBGZ")).to.be.revertedWithCustomError(MastermindGame,"InvalidParameter").withArgs("secret","Invalid color in the code");
-            
             }
         })
 
@@ -992,18 +1092,6 @@ describe("MastermindGame Contract", function(){
             }
         })
 
-        /*
-        it("Should fail if the dispute window is still open", async function(){
-            const {owner, joiner, MastermindGame}=await loadFixture(publicTurnSuspendedSecretPublished); 
-            //This function can be called by one of the participant
-            if((await MastermindGame.getCodeMaker(0,0))==owner.address){
-                await expect(MastermindGame.connect(joiner).endTurn(0,0)).to.be.revertedWithCustomError(MastermindGame, "UnauthorizedOperation").withArgs("Dispute window is still open");
-            }else{
-                 await expect(MastermindGame.endTurn(0,0)).to.be.revertedWithCustomError(MastermindGame, "UnauthorizedOperation").withArgs("Dispute window is still open");
-            }
-            
-        })*/
-
         it("Should fail if wrong parameter are passed (unexisting match/turn)", async function(){
             const {owner, joiner, MastermindGame}=await loadFixture(publicTurnSuspendedSecretPublished); 
             //This function can be called by one of the participant
@@ -1016,8 +1104,18 @@ describe("MastermindGame Contract", function(){
             }
         })
 
-        it("Should fail if the turn is not suspended (not ended or secret not published)", async function(){
+        it("Should fail if the turn is not suspended (The game is suspended when the code is guessed or when the attempts bound is reached)", async function(){
             const {owner, joiner, MastermindGame}=await loadFixture(publicTurnHashPublished); 
+            //This function can be called by one of the participant
+            if((await MastermindGame.getCodeMaker(0,0))==owner.address){
+                await expect(MastermindGame.connect(joiner).endTurn(0, 0)).to.be.revertedWithCustomError(MastermindGame, "UnauthorizedOperation").withArgs("Turn not terminable");
+            }else{
+                await expect(MastermindGame.endTurn(0, 0)).to.be.revertedWithCustomError(MastermindGame, "UnauthorizedOperation").withArgs("Turn not terminable");
+            }
+        })
+
+        it("Should fail if the secret code has not been published", async function(){
+            const {owner, joiner, MastermindGame}=await loadFixture(publicTurnAlmostConcluded_Guessed); 
             //This function can be called by one of the participant
             if((await MastermindGame.getCodeMaker(0,0))==owner.address){
                 await expect(MastermindGame.connect(joiner).endTurn(0, 0)).to.be.revertedWithCustomError(MastermindGame, "UnauthorizedOperation").withArgs("Turn not terminable");
@@ -1162,4 +1260,68 @@ describe("MastermindGame Contract", function(){
             }
         })
     })
+
+    describe("Getters", async function () {
+        describe("GetCodeMaker", async function() {
+            it("Should fail if the match does not exists", async function (){
+               const {owner, MastermindGame}=await loadFixture(publicMatchStarted);
+               await expect(MastermindGame.getCodeMaker(5, 0)).to.be.revertedWithCustomError(MastermindGame, "MatchNotFound").withArgs(5);
+            })
+
+            it("Should fail if the turn does not exists", async function (){
+                const {owner, MastermindGame}=await loadFixture(publicMatchStarted);
+                await expect(MastermindGame.getCodeMaker(0, 5)).to.be.revertedWithCustomError(MastermindGame, "TurnNotFound").withArgs(5);
+            })
+
+            it("Should fail if the turn is not started", async function (){
+                const {owner, MastermindGame}=await loadFixture(publicMatchCreated);
+                await expect(MastermindGame.getCodeMaker(0, 0)).to.be.revertedWithCustomError(MastermindGame, "MatchNotStarted").withArgs(0);
+            })
+        })
+
+        describe("GetCodeBreaker", async function() {
+            it("Should fail if the match does not exists", async function (){
+               const {owner, MastermindGame}=await loadFixture(publicMatchStarted);
+               await expect(MastermindGame.getCodeBreaker(5, 0)).to.be.revertedWithCustomError(MastermindGame, "MatchNotFound").withArgs(5);
+            })
+
+            it("Should fail if the turn does not exists", async function (){
+                const {owner, MastermindGame}=await loadFixture(publicMatchStarted);
+                await expect(MastermindGame.getCodeBreaker(0, 5)).to.be.revertedWithCustomError(MastermindGame, "TurnNotFound").withArgs(5);
+            })
+
+            it("Should fail if the turn is not started", async function (){
+                const {owner, MastermindGame}=await loadFixture(publicMatchCreated);
+                await expect(MastermindGame.getCodeBreaker(0, 0)).to.be.revertedWithCustomError(MastermindGame, "MatchNotStarted").withArgs(0);
+            })
+        })
+
+        describe("GetMatchCreator", async function() {
+            it("Should fail if the match does not exists", async function (){
+               const {owner, MastermindGame}=await loadFixture(publicMatchStarted);
+               await expect(MastermindGame.getMatchCreator(5)).to.be.revertedWithCustomError(MastermindGame, "MatchNotFound").withArgs(5);
+            })
+        })
+
+        describe("GetActualPoints", async function() {
+            it("Should fail if the match does not exists", async function (){
+               const {owner, MastermindGame}=await loadFixture(publicMatchStarted);
+               await expect(MastermindGame.getActualPoints(5)).to.be.revertedWithCustomError(MastermindGame, "MatchNotFound").withArgs(5);
+            })
+        })
+        
+        describe("GetSecondPlayer", async function() {
+            it("Should fail if the match does not exists", async function (){
+               const {owner, MastermindGame}=await loadFixture(publicMatchStarted);
+               await expect(MastermindGame.getSecondPlayer(5)).to.be.revertedWithCustomError(MastermindGame, "MatchNotFound").withArgs(5);
+            })
+
+            it("Should fail if the second player has not already joined that match", async function (){
+                const {owner, MastermindGame}=await loadFixture(publicMatchCreated);
+                await expect(MastermindGame.getSecondPlayer(0)).to.be.revertedWithCustomError(MastermindGame, "Player2NotJoinedYet").withArgs(0);
+             })
+        })
+        
+    })
+    //TODO: Test dei getters
 })

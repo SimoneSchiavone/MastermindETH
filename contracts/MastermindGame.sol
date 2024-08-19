@@ -137,7 +137,7 @@ contract MastermindGame {
             revert GameUtils.InvalidParameter("opponent","=0");
  
         if(opponent==msg.sender)
-            revert GameUtils.InvalidParameter("opponent","opponent==yourself");
+            revert GameUtils.InvalidParameter("opponent","=yourself");
 
         //Initialize a new match
         Match storage newMatch=activeMatches[nextMatchId];
@@ -234,6 +234,8 @@ contract MastermindGame {
         Match storage m=activeMatches[matchId];
         m.stake=value;
         m.timestampStakePaymentsOpening=block.number;
+
+        emit GameUtils.matchStakeFixed(matchId, value);
         /*registers the timestamp when tha amount to pay is fixed because participant should send their funds
         within STAKEPAYMENTDEADLINE seconds, otherwise one of the parties can retire its funds and nullify the match */
     }
@@ -503,10 +505,6 @@ contract MastermindGame {
         if((t.isSuspended==false) || bytes(t.secret).length==0) //Case match not suspended or secret not provided
             revert GameUtils.UnauthorizedOperation("Turn not terminable");
 
-        /* QUESTO CONTROLLO NON SERVE. ORA IL PARTECIPANTE CHE FA END TURN e' sicuro che non farà disputa. è una conferma
-        if(block.number<t.disputeWindowOpening+DISPUTEWINDOWLENGTH) 
-            revert GameUtils.UnauthorizedOperation("Dispute window is still open");*/
-
         uint8 earned=uint8(t.codeProposals.length);
         earned = !(t.codeGuessed) ? earned+extraReward : earned-1; //the last code proposed is correct hence it's not a failure to consider
         
@@ -765,6 +763,8 @@ contract MastermindGame {
     }
 
     //-------GETTERS-------
+    /* Function invoked to get the address of the codeMaker of a given turn of a given match.
+    * The call fails if the turn/match is not found or because the match is not started. */
     function getCodeMaker(uint matchId, uint turnId) public view returns (address){
         if(activeMatches[matchId].player1==address(0))
             revert GameUtils.MatchNotFound(matchId);
@@ -772,10 +772,11 @@ contract MastermindGame {
             revert GameUtils.MatchNotStarted(matchId);
         if(turnId>=activeMatches[matchId].turns.length)
             revert GameUtils.TurnNotFound(turnId);
-
         return activeMatches[matchId].turns[turnId].codeMaker;
     }
 
+    /* Function invoked to get the address of the codeBreaker of a given turn of a given match.
+    * The call fails if the turn/match is not found or because the match is not started. */
     function getCodeBreaker(uint matchId, uint turnId) public view returns (address){
         if(activeMatches[matchId].player1==address(0))
             revert GameUtils.MatchNotFound(matchId);
@@ -790,6 +791,9 @@ contract MastermindGame {
         }
     }
 
+    /* Function invoked to get the actual points of the 2 player of a match. The call
+     * to that function fails if the match requested is not present in the list of the
+     * matches currently active.*/
     function getActualPoints(uint matchId) public view returns (uint[] memory){
         if(activeMatches[matchId].player1==address(0))
             revert GameUtils.MatchNotFound(matchId);
@@ -799,29 +803,28 @@ contract MastermindGame {
         return scores;
     }
 
-    /**
-     * @notice Function return the address of the creator of the match whose id is "id". It fails if
-     * the give id is not related to any active match.
-     * @param matchId id of the match we are looking for
-     */
+    /* Function return the address of the creator of the match whose id is "id". It fails if
+     * the give id is not related to any active match.*/
     function getMatchCreator(uint matchId) public view returns (address){
         if(activeMatches[matchId].player1==address(0))
             revert GameUtils.MatchNotFound(matchId);
         return activeMatches[matchId].player1;
     }
 
-    /**
-     * @notice Function return the address of the second player of the match whose id is "id". It fails if
+    /* Function returns the address of the second player of the match whose id is "id". It fails if
      * the given id is not related to any active match or if that match is still waiting for an opponent.
      * Notice that the match creator can have specified the address of the contender but he/she may have not
-     * already join the match.
-     * @param matchId id of the match we are looking for
-     */
+     * already join the match.*/
     function getSecondPlayer(uint matchId) public view returns (address){
         if(activeMatches[matchId].player1==address(0))
             revert GameUtils.MatchNotFound(matchId);
         if(activeMatches[matchId].player2==address(0))
-            revert GameUtils.Player2NotJoinedYet(); 
+            revert GameUtils.Player2NotJoinedYet(matchId); 
         return activeMatches[matchId].player2;
+    }
+
+    function getTurn(uint matchId, uint turnId) public view returns (Turn memory){
+        Turn memory i=activeMatches[matchId].turns[turnId];
+        return i;
     }
 }

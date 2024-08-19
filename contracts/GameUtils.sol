@@ -54,5 +54,5 @@ library GameUtils{
     error MatchNotStarted(uint matchId);
     error TurnNotEnded(uint turnId);
     error TurnEnded(uint turnId);
-    error Player2NotJoinedYet();
+    error Player2NotJoinedYet(uint matchId);
 }
