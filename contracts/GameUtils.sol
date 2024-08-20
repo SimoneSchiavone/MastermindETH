@@ -21,23 +21,23 @@ library GameUtils{
     //notifies that both player have deposited the match stake for that match
     event matchDeleted(uint matchId); 
     //notifies the deletion of that match from the active ones
-    event newTurnStarted(uint matchId, uint8 turnNum, address codeMaker); 
+    event newTurnStarted(uint matchId, uint turnNum, address codeMaker); 
     //notifies that a new turn of a match ir ready to be played and it speficies the address of the codemaker;
-    event codeHashPublished(uint matchId, uint8 turnNum, bytes32 digest); 
+    event codeHashPublished(uint matchId, uint turnNum, bytes32 digest); 
     //notifies that the codeMaker has published the digest of the code hence the opponent could start to emit guesses;
-    event newGuess(uint matchId, uint8 turnNum, string guess); 
+    event newGuess(uint matchId, uint turnNum, string guess); 
     //notifies that a the codeBreaker of a game has proposed a solution for the code
-    event feedbackProvided(uint matchId, uint8 turnNum, uint8 attemptNum, uint8 corrPos, uint8 wrongPosCorrCol);
+    event feedbackProvided(uint matchId, uint turnNum, uint attemptNum, uint corrPos, uint wrongPosCorrCol);
     //notifies that the codeMaker has provided its feedback regarding the guess number 'attemptnum' of that turn of the match;
-    event secretRequired(uint matchId, uint8 turnId, bool codeGuesses, address codeMaker);
+    event secretRequired(uint matchId, uint turnId, bool codeGuesses, address codeMaker);
     //notifies the codemaker that the turn is going to end so he has to provide the original code
-    event turnCompleted(uint matchId, uint8 turnNum, uint8 points, address who);
+    event turnCompleted(uint matchId, uint turnNum, uint points, address who);
     //notifies that a turn of a match is completed with the assignment of those points to that player
     event matchCompleted(uint matchId, address winner);
     //notifies the completion of a match and indicates the winner of that match. Winner==address(0) represents the case of a tie.
-    event cheatingDetected(uint matchId, uint8 turnId, address who);
+    event cheatingDetected(uint matchId, uint turnId, address who);
     //notifies that a player had a dishonest behavior hence punishment is performed
-    event disputeWindowOpen(uint matchId, uint8 turnId, uint8 length);
+    event disputeWindowOpen(uint matchId, uint turnId, uint length);
     //notifies the opening of the dispute window providing also its length in blocks
     event AFKreported(uint matchId, address afkplayer);
     //notifies the contract that probably that player is AFK
