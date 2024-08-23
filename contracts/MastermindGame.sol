@@ -31,7 +31,8 @@ contract MastermindGame {
     struct Match{
         address player1; //creator of the match
         address player2; //second player
-        
+        bool ended; //match ended
+
         //---Match stake management---
         uint stake; //amount in wei to put in stake for this match
         uint timestampStakePaymentsOpening; //blocknum of the block in which the stake is fixed
@@ -105,6 +106,7 @@ contract MastermindGame {
         Match storage newMatch=activeMatches[nextMatchId];
         newMatch.player1=msg.sender;
         newMatch.player2=address(0);
+        newMatch.ended=false;
 
         newMatch.stake=0;
         newMatch.deposit1=false;
@@ -535,6 +537,8 @@ contract MastermindGame {
     function endMatch(uint matchId, bool fromPunishment) internal {
         Match storage m=activeMatches[matchId];
         if(!fromPunishment){
+            m.ended=true;
+
             //Decide the winner of the match
             if(m.score1==m.score2){ //tie
                 emit GameUtils.matchCompleted(matchId, address(0)); //In case of TIE the event will not specify a winning address
@@ -800,6 +804,13 @@ contract MastermindGame {
         scores[0]=activeMatches[matchId].score1;
         scores[1]=activeMatches[matchId].score2;
         return scores;
+    }
+    
+    /* Function invoked to check if a given match is already ended.*/
+    function isEnded(uint matchId) public view returns (bool){
+        if(activeMatches[matchId].player1==address(0))
+            revert GameUtils.MatchNotFound(matchId);
+        return activeMatches[matchId].ended;
     }
 
     /* Function return the address of the creator of the match whose id is "id". It fails if

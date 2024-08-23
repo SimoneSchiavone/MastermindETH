@@ -60,7 +60,9 @@ library Utils{
     }
 
     /**
-     * @notice Pure function that counts the number of char matches between the two strings
+     * @notice Pure function that counts the number of char matches between the two strings.
+     * It assumes thah the first string is the shortest between the two, in case the lenght
+     * is different
      */
     function matchCount (string memory s1, string memory s2) external pure returns(uint){
         bytes memory s1_ = bytes (s1);

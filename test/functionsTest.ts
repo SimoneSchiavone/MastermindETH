@@ -1328,5 +1328,120 @@ describe("MastermindGame Contract", function(){
                 await expect(MastermindGame.getSecondPlayer(0)).to.be.revertedWithCustomError(MastermindGame, "Player2NotJoinedYet").withArgs(0);
              })
         })
+
+        describe("idEnded", async function() {
+            it("Should fail if the match does not exists", async function (){
+               const {owner, MastermindGame}=await loadFixture(publicMatchStarted);
+               await expect(MastermindGame.isEnded(5)).to.be.revertedWithCustomError(MastermindGame, "MatchNotFound").withArgs(5);
+            })
+
+            it("Says if the match is ended", async function (){
+                const {owner, MastermindGame}=await loadFixture(publicMatchCreated);
+                expect(await MastermindGame.isEnded(0)).to.be.equal(false);
+             })
+        })
+    })
+})
+describe("Utils Contract", function(){
+    async function onlyDeployFixture() {
+        const Lib = await ethers.getContractFactory("Utils");
+        const lib = await Lib.deploy();
+        return lib;
+    }
+    describe("RandNo", function(){
+        it("Should not revert", async function () {
+            const lib=loadFixture(onlyDeployFixture);
+            expect((await lib).randNo(5)).not.to.be.reverted;
+        })    
+    })        
+
+    describe("uintArrayFind", function(){
+        it("Should revert if element not present", async function () {
+            const lib=await loadFixture(onlyDeployFixture);
+            let array:number[]=[0, 1, 2, 3, 4, 5];
+            await expect(lib.uintArrayFind(array,8)).to.be.revertedWith("Value not found in the array!");
+        })  
+        
+        it("Should return the position of the element", async function () {
+            const lib=await loadFixture(onlyDeployFixture);
+            let array:number[]=[0, 1, 2, 3, 4, 5];
+            expect(await lib.uintArrayFind(array, 2)).to.equal(2);
+        })  
+    }) 
+    
+    describe("uintArrayContains", function(){
+        it("Should return false if element not present", async function () {
+            const lib=await loadFixture(onlyDeployFixture);
+            let array:number[]=[0, 1, 2, 3, 4, 5];
+            expect(await lib.uintArrayContains(array,8)).to.be.equal(false);
+        })  
+        
+        it("Should return true if the element is present", async function () {
+            const lib=await loadFixture(onlyDeployFixture);
+            let array:number[]=[0, 1, 2, 3, 4, 5];
+            expect(await lib.uintArrayContains(array,5)).to.be.equal(true);
+        })  
+    }) 
+
+    describe("strcmp", function(){
+        it("Should return false if strings differs", async function () {
+            const lib=await loadFixture(onlyDeployFixture);
+            expect(await lib.strcmp("HELLO", "HOLA")).to.be.equal(false);
+        })  
+        
+        it("Should return true if strings are equal", async function () {
+            const lib=await loadFixture(onlyDeployFixture);
+            expect(await lib.strcmp("HELLO", "HELLO")).to.be.equal(true);
+        })  
+    })
+    
+    describe("matchCound", function(){
+        it("Should return 0 if there are no char matches between the strings", async function () {
+            const lib=await loadFixture(onlyDeployFixture);
+            let s1:string="HELLO";
+            let s2:string="CIAOS";
+            expect(await lib.matchCount(s1, s2)).to.be.equal(0);
+        })  
+        
+        it("Should return the correct number of matches between the strings", async function () {
+            const lib=await loadFixture(onlyDeployFixture);
+            let s1:string="HELLO";
+            let s2:string="HOLAS";
+            expect(await lib.matchCount(s1, s2)).to.be.equal(2);
+        })  
+    })
+
+    describe("semiMatchCount", function(){
+        it("Should return the correct number of matches between the strings", async function () {
+            const lib=await loadFixture(onlyDeployFixture);
+            let s1:string="AECBD";
+            let s2:string="CEBAA";
+            let alphabet:string="ABCDE";
+            expect(await lib.semiMatchCount(s1, s2, alphabet)).to.be.equal(3);
+        })  
+        
+        it("Should return 0 if the strings are equal", async function () {
+            const lib=await loadFixture(onlyDeployFixture);
+            let s1:string="CEDDA";
+            let s2:string="CEDDA";
+            let alphabet:string="ABCDE";
+            expect(await lib.semiMatchCount(s1, s2, alphabet)).to.be.equal(0);
+        })  
+    })
+
+    describe("containsCharsOf", function(){
+        it("Should return true if the string contains characters of the defined alphabet", async function () {
+            const lib=await loadFixture(onlyDeployFixture);
+            let s1:string="TOPOLINO";
+            let alphabet:string="OILNOPT";
+            expect(await lib.containsCharsOf(s1, alphabet)).to.be.equal(true);
+        })  
+        
+        it("Should return true if the string contains at least a character that is not in the defined alphabet", async function () {
+            const lib=await loadFixture(onlyDeployFixture);
+            let s1:string="PLUTO";
+            let alphabet:string="OILNOPT";
+            expect(await lib.containsCharsOf(s1, alphabet)).to.be.equal(false);
+        })  
     })
 })

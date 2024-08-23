@@ -1730,7 +1730,6 @@ describe("MATCH SIMULATIONS", function(){
         }
     })
 
-    //TODO: MULTIPLE MATCHES vittoria del secondo
     it("MULTIPLE MATCH SIMULATION", async function () {
         /** In this use case scenario we would like to test the correctness of the procedures
         * invoked during the execution of multiple simultaneous matches, possibly involving the same user
