@@ -12,6 +12,7 @@ import "./GameUtils.sol";
  */
 contract MastermindGame {
     address public gameManager;
+    address public negotiationContract; //address of the contract that may be used to negotiate the match stake
 
     //---GAME PARAMETERS---
     //Typically in the real game are used 10 colors, here they are Amber, Black, Cyan, Green, Pink, Red, Turquoise, Violet, White, Yellow
@@ -96,7 +97,12 @@ contract MastermindGame {
         gameManager=msg.sender;
     }
 
-    //----------MATCHMAKING PHASE----------
+    /*  
+        ****************************************
+        *          MATCHMAKING PHASE           *
+        **************************************** 
+    */
+
     /**
      * @notice Function invoked in order to create a new game without setting
      * the address of the opponent.
@@ -213,10 +219,15 @@ contract MastermindGame {
         emit GameUtils.secondPlayerJoined(msg.sender, id);
     }
 
-    //----------MATCH STAKE NEGOTIATION PHASE----------
-    /*Here it's assumed that the value put in stake by both user for their match will be decided
-    offchain and, whenever they have reached an agreement on that value, the match creator will set
-    this parameter of the match. */
+    /*
+        ****************************************
+        *       MATCH STAKE NEGOTIATION        *
+        ****************************************
+    */
+    /*Here it is assumed that the match creator sets the match stake parameter when the two 
+    players agree on the stake value. The negotiation phase can be carried out by using 
+    off-chain tools or by using a specific contract, whose address, if any, is provided by the
+    MastermindContract. */
 
     /**
      * @notice Function callable once only by the creator of the match in order to fix the amount put in stake.
@@ -294,7 +305,29 @@ contract MastermindGame {
         emit GameUtils.matchDeleted(matchId);
     }
     
-    //----------TURN INITIALIZATION----------
+    /**
+     * @notice Function invoked by the Game Manager to set the address of the optional negotiation contract.
+     * @param addr address of the negotiation contract.
+     */
+    function setNegotiationContract(address addr) onlyGameOwner public {
+        if(addr==address(0))
+            revert GameUtils.InvalidParameter("Address","=0");
+        negotiationContract=addr;
+    }
+
+    /**
+     * @notice Function invoked to get the address of the optional stake negotiation contract
+     */
+    function isThereANegotiationContract() public view returns(address){
+        return negotiationContract;
+    }
+
+    /*
+        ****************************************
+        *         TURN INITIALIZATION          *
+        ****************************************
+    */
+
     /**
      * @notice Match creation automatically invoked whenever the contract receives
      * the stake payment from both the game participant.
@@ -326,10 +359,15 @@ contract MastermindGame {
 
         //AFK parameters management
         m.whoHasToDoTheNextOp=t.codeMaker;
-        //FIXME: Pensare se serve resettare anche l'afk report time
+        m.lastAFKreport=0;
     }
 
-    //----------TURN ACTIONS----------
+    /*
+        ****************************************
+        *             TURN ACTIONS             *
+        ****************************************
+    */
+
     /**
      * @notice Function invoked by the player who has the role of codeMaker of the turn
      * in order to load the digest of the secret. The hash is stored to guarantee that
@@ -450,7 +488,6 @@ contract MastermindGame {
         return;
     }
 
-    //----------TURN CONCLUSION----------
     /**
      * Function invoked by the codeMaker in order to prove that he has not changed the secret code during the
      * game. If the check passes then the function determines the points scored by the codeMaker of that turn.
@@ -572,7 +609,12 @@ contract MastermindGame {
         }
     }
 
-    //----------AFK & DISPUTES----------
+    /*
+        ****************************************
+        *            AFK & DISPUTES            *
+        ****************************************
+    */
+
     /**
      * Function invoked by the codeBreaker of the turn in order to report the fact that, in its opinion, the
      * codeMaker has provided a wrong feedback for one of its guesses. If the dispute will be accepted by the
@@ -683,7 +725,12 @@ contract MastermindGame {
         endMatch(matchId,true);
     }
 
-    //----------UTILITIES AND MODIFIERS----------
+    /*
+        ****************************************
+        *        UTILITIES & MODIFIERS         *
+        ****************************************
+    */
+
     /**
      * @notice This function removes the element in position "target" from
      * the uint array. Since it's used to remove elements from uint arrays stored
@@ -754,9 +801,19 @@ contract MastermindGame {
             revert GameUtils.UnauthorizedOperation("You are not the codeBreaker of this turn");
         _;
     }
+    
+    /**
+     * @notice this modifier allows the operation at which it is attached only if
+     * the caller is the game manager.
+     */
+    modifier onlyGameOwner(){
+        if(msg.sender!=gameManager)
+            revert GameUtils.UnauthorizedOperation("You are not the game manager");
+        _;
+    }
 
     /**
-     * @notice Function that removes an ended match from the list of the active ones.
+     * @notice Function that removes a match from the list of the active ones.
      */
     function dropTheMatch(uint matchId) internal{
         if(activeMatches[matchId].player1==address(0))
@@ -765,9 +822,15 @@ contract MastermindGame {
         delete activeMatches[matchId];
     }
 
-    //-------GETTERS-------
+    /*
+        ****************************************
+        *               GETTERS                *
+        ****************************************
+    */
+
+   
     /* Function invoked to get the address of the codeMaker of a given turn of a given match.
-    * The call fails if the turn/match is not found or because the match is not started. */
+     * The call fails if the turn/match is not found or because the match is not started. */
     function getCodeMaker(uint matchId, uint turnId) public view returns (address){
         if(activeMatches[matchId].player1==address(0))
             revert GameUtils.MatchNotFound(matchId);
@@ -779,7 +842,7 @@ contract MastermindGame {
     }
 
     /* Function invoked to get the address of the codeBreaker of a given turn of a given match.
-    * The call fails if the turn/match is not found or because the match is not started. */
+     * The call fails if the turn/match is not found or because the match is not started. */
     function getCodeBreaker(uint matchId, uint turnId) public view returns (address){
         if(activeMatches[matchId].player1==address(0))
             revert GameUtils.MatchNotFound(matchId);
@@ -833,6 +896,7 @@ contract MastermindGame {
         return activeMatches[matchId].player2;
     }
 
+    /* Function returns the Turna struct associated to the given matchId-turn*/
     function getTurn(uint matchId, uint turnId) public view returns (Turn memory){
         Turn memory i=activeMatches[matchId].turns[turnId];
         return i;

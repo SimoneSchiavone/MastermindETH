@@ -6,7 +6,6 @@ import { anyValue } from "@nomicfoundation/hardhat-chai-matchers/withArgs";
 
 describe("MastermindGame Contract", function(){
     const FIVE_MINUTES_IN_SECONDS=300;
-    const colors=4; 
     const codesize=5;
     const turns=4;
     const guesses=5;
@@ -1350,7 +1349,7 @@ describe("Utils Contract", function(){
     }
     describe("RandNo", function(){
         it("Should not revert", async function () {
-            const lib=loadFixture(onlyDeployFixture);
+            const lib=await loadFixture(onlyDeployFixture);
             expect((await lib).randNo(5)).not.to.be.reverted;
         })    
     })        
