@@ -154,7 +154,7 @@ contract UintNegotiation{
                     if(previousProp > previousCounterProp){ //upward counterproposal
                         if(amount <= previousCounterProp)
                             revert InvalidParameter("Should increase the amount of the proposal");
-                    }else{ //downward counterproposal
+                    }else{ //downwards counterproposal
                         if(amount >= previousCounterProp)
                             revert InvalidParameter("Should decrease the amount of the proposal");
                     }

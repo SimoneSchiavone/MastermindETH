@@ -36,7 +36,7 @@ contract MastermindGame {
 
         //---Match stake management---
         uint stake; //amount in wei to put in stake for this match
-        uint timestampStakePaymentsOpening; //blocknum of the block in which the stake is fixed
+        uint stakePaymentsOpening; //blocknum of the block in which the stake is fixed
         bool deposit1; //indicates that player1 has payed the stake amount
         bool deposit2; //indicates that player2 has payed the stake amount
 
@@ -242,7 +242,7 @@ contract MastermindGame {
 
         Match storage m=activeMatches[matchId];
         m.stake=value;
-        m.timestampStakePaymentsOpening=block.number;
+        m.stakePaymentsOpening=block.number;
 
         emit GameUtils.matchStakeFixed(matchId, value);
         /*registers the timestamp when tha amount to pay is fixed because participant should send their funds
@@ -296,13 +296,15 @@ contract MastermindGame {
         }
 
         //Check if the deadline for the payments of the stake amount is already expired
-        require(block.number>=(m.timestampStakePaymentsOpening+STAKEPAYMENTDEADLINE),"You cannot request the refund until the deadline for the payments is expired!");
+        require(block.number>=(m.stakePaymentsOpening+STAKEPAYMENTDEADLINE),"You cannot request the refund until the deadline for the payments is expired!");
 
-        (bool success,) = msg.sender.call{value: m.stake}("");
-        require(success,"Refund payment failed!");
+        address who=msg.sender;
+        uint howMuch=m.stake;
 
         dropTheMatch(matchId);
         emit GameUtils.matchDeleted(matchId);
+
+        payable(who).transfer(howMuch);
     }
     
     /**
@@ -573,6 +575,8 @@ contract MastermindGame {
      */
     function endMatch(uint matchId, bool fromPunishment) internal {
         Match storage m=activeMatches[matchId];
+        if(m.ended)
+            revert GameUtils.UnauthorizedOperation("Match ended");
         if(!fromPunishment){
             m.ended=true;
 
@@ -581,26 +585,22 @@ contract MastermindGame {
                 emit GameUtils.matchCompleted(matchId, address(0)); //In case of TIE the event will not specify a winning address
 
                 //Each player will have the amount that it has deposited as stake at the beginning of the match
-                (bool success,) = m.player2.call{value: m.stake}("");
-                require(success,"Final payment failed!");
-
-                (success,) = m.player1.call{value: m.stake}("");
-                require(success,"Final payment failed!");
+                payable(m.player1).transfer(m.stake);
+                payable(m.player2).transfer(m.stake);
+                
             }else{
                 if(m.score1<m.score2){
                     emit GameUtils.matchCompleted(matchId, m.player1);
 
-                    (bool success,) = m.player1.call{value: m.stake}("");
-                    require(success,"Final payment failed!");
+                    payable(m.player2).transfer(m.stake);
                 }else{
                     emit GameUtils.matchCompleted(matchId, m.player2);
-
-                    (bool success,) = m.player1.call{value: m.stake}("");
-                    require(success,"Final payment failed!");
+                    
+                    payable(m.player1).transfer(m.stake);
                 }
             }
             
-            dropTheMatch(matchId);
+            //dropTheMatch(matchId);
         }else{
             /*If the function is invoked from the punishment, here we notify only the deletion of the match
             because the payment has already been done in "punish".*/
@@ -712,17 +712,17 @@ contract MastermindGame {
 
         Match storage m=activeMatches[matchId];
         uint stake=m.stake;
+        address honestPlayer;
+        if(m.player1==who){
+            honestPlayer=m.player2;
+        }else{
+            honestPlayer=m.player1;
+        }
         stake*=2; //double the stake because the honest player will obtain the stake of the cheater one
 
-        if(m.player1==who){
-            (bool success,) = m.player2.call{value: stake}("");
-            require(success,"Punishment payment failed!");
-        }else{
-            (bool success,) = m.player1.call{value: stake}("");
-            require(success,"Punishment payment failed!");
-        }
-        
-        endMatch(matchId,true);
+        endMatch(matchId, true); //cancel the match before paying for reentrancy security
+
+        payable(honestPlayer).transfer(stake);
     }
 
     /*
@@ -896,7 +896,7 @@ contract MastermindGame {
         return activeMatches[matchId].player2;
     }
 
-    /* Function returns the Turna struct associated to the given matchId-turn*/
+    /* Function returns the Turn struct associated to the given matchId-turn couple*/
     function getTurn(uint matchId, uint turnId) public view returns (Turn memory){
         Turn memory i=activeMatches[matchId].turns[turnId];
         return i;
