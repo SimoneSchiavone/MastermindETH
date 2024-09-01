@@ -30,20 +30,19 @@ describe("Integration of UintNegotiation contract with MastermindGame contract",
     it("Set the reference to that contract", async () => {
         let {neg, mm}=await loadFixture(onlyDeployFixture);
         await expect(mm.setNegotiationContract(await ethers.getAddress(await neg.getAddress()))).not.to.be.reverted;
-        expect(await mm.isThereANegotiationContract()).to.equal(await neg.getAddress());
+        expect(await mm.negotiationContract()).to.equal(await neg.getAddress());
     })
 
     it("Fails if not set by the game owner", async () => {
         let {neg, mm}=await loadFixture(onlyDeployFixture);
         let [u1, u2]=await ethers.getSigners();
         await expect(mm.connect(u2).setNegotiationContract(await ethers.getAddress(await neg.getAddress()))).to.be.revertedWithCustomError(mm, "UnauthorizedOperation").withArgs("You are not the game manager");
-        expect(await mm.isThereANegotiationContract()).to.equal(ethers.ZeroAddress);
+        expect(await mm.negotiationContract()).to.equal(ethers.ZeroAddress);
     })
 
     it("Should fail if an address of a contract not implementing the interface is passed", async () => {
         let {neg, mm}=await loadFixture(onlyDeployFixture);
         await expect(mm.setNegotiationContract(await ethers.getAddress(await mm.getAddress())));
-        //expect(await mm.isThereANegotiationContract()).to.equal(await neg.getAddress());
     })
    
 })

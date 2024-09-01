@@ -11,16 +11,16 @@ import "./GameUtils.sol";
  * @notice This smart conctract manages the matches between users for the code breaking game Mastermind.
  */
 contract MastermindGame {
-    address public gameManager;
+    address private gameManager;
     address public negotiationContract; //address of the contract that may be used to negotiate the match stake
 
     //---GAME PARAMETERS---
     //Typically in the real game are used 10 colors, here they are Amber, Black, Cyan, Green, Pink, Red, Turquoise, Violet, White, Yellow
     string public availableColors="ABCGPRTVWY"; //number of colors usable in the code
-    uint public codeSize; //size of the code
-    uint public extraReward;  //extra reward for the code maker if the code breaker is not able to guess the code.
-    uint public numberTurns;
-    uint public numberGuesses;
+    uint private codeSize; //size of the code
+    uint private extraReward;  //extra reward for the code maker if the code breaker is not able to guess the code.
+    uint private numberTurns;
+    uint private numberGuesses;
 
     //---DEADLINES---
     uint constant STAKEPAYMENTDEADLINE = 25; //25 blocks, about 5 minutes
@@ -201,7 +201,8 @@ contract MastermindGame {
      * waiting for a second player. It will fail if there is no match available.
      */
     function joinMatch() public{
-        require(publicMatchesWaitingForAnOpponent.length>0,"Currently no matches are available, try to create a new one!");
+        if(publicMatchesWaitingForAnOpponent.length==0)
+            revert GameUtils.UnauthorizedOperation("No matches available");
 
         uint randIdx=Utils.randNo(publicMatchesWaitingForAnOpponent.length); //generate a number in [0, current number of available matches]
         uint id=publicMatchesWaitingForAnOpponent[randIdx]; //get the id of the waiting match associated to the idx generated above
@@ -290,13 +291,16 @@ contract MastermindGame {
 
         //The caller has to have done the payment before, otherwise cannot request the refund
         if(msg.sender==m.player1){
-            require(m.deposit1,"You have not put in stake the amount required!");
+            if(!m.deposit1)
+                revert GameUtils.UnauthorizedOperation("Stake not deposited");
         }else{
-            require(m.deposit2,"You have not put in stake the amount required!");
+            if(!m.deposit2)
+                revert GameUtils.UnauthorizedOperation("Stake not deposited");
         }
 
         //Check if the deadline for the payments of the stake amount is already expired
-        require(block.number>=(m.stakePaymentsOpening+STAKEPAYMENTDEADLINE),"You cannot request the refund until the deadline for the payments is expired!");
+        if(block.number<(m.stakePaymentsOpening+STAKEPAYMENTDEADLINE))
+            revert GameUtils.UnauthorizedOperation("Deadline not expired");
 
         address who=msg.sender;
         uint howMuch=m.stake;
@@ -315,13 +319,6 @@ contract MastermindGame {
         if(addr==address(0))
             revert GameUtils.InvalidParameter("Address","=0");
         negotiationContract=addr;
-    }
-
-    /**
-     * @notice Function invoked to get the address of the optional stake negotiation contract
-     */
-    function isThereANegotiationContract() public view returns(address){
-        return negotiationContract;
     }
 
     /*
@@ -413,13 +410,13 @@ contract MastermindGame {
             revert GameUtils.TurnEnded(turnId);
 
         Turn storage t=m.turns[turnId]; //actual turn
-        //CONTROLLO NON NECESSARIO PERCHè' ALL'ULTIMO TENTATIVO IL TURNO TERMINA
         require(t.codeProposals.length<numberGuesses,"Too many attempts for this turn!");
         if(t.isSuspended){
-            revert GameUtils.UnauthorizedOperation("Turn suspended, no more guesses admitted");
+            revert GameUtils.UnauthorizedOperation("Turn suspended");
         }
-        require((t.codeProposals.length==t.correctColor.length)&&(t.codeProposals.length==t.correctColorAndPosition.length),"You need to wait the feedback from the codeMaker regarding the last code you have proposed!");
-
+        if((t.codeProposals.length!=t.correctColor.length)||(t.codeProposals.length!=t.correctColorAndPosition.length)){
+            revert GameUtils.UnauthorizedOperation("Wait the feedback");
+        }
         //We assume that the string received by the contract is like "BCRTA", where each char represents one of the colors available in this game
         //Before pushing in the array of code proposed check its correctness
         if(!Utils.containsCharsOf(availableColors,codeProposed))
@@ -456,8 +453,10 @@ contract MastermindGame {
         uint attemptNum=t.codeProposals.length;
 
         //The correct situation is when the codeProposals array has a length greater than the feedback ones of 1 unit
-        require(t.codeProposals.length>0,"The codeBreakers has not yet provided a guess!");
-        require((t.correctColorAndPosition.length==attemptNum-1) && (t.correctColor.length==attemptNum-1),"Feedback already provided for this attempt, wait for another guess of the codeBreaker!");
+        if(t.codeProposals.length==0)
+            revert GameUtils.UnauthorizedOperation("No guesses available");
+        if((t.correctColorAndPosition.length!=attemptNum-1) || (t.correctColor.length!=attemptNum-1))
+            revert GameUtils.DuplicateOperation("Feedback already provided");
         t.correctColorAndPosition.push(corrPos);
         t.correctColor.push(wrongPosCorrCol);
 
@@ -875,7 +874,7 @@ contract MastermindGame {
             revert GameUtils.MatchNotFound(matchId);
         return activeMatches[matchId].ended;
     }
-
+    
     /* Function return the address of the creator of the match whose id is "id". It fails if
      * the give id is not related to any active match.*/
     function getMatchCreator(uint matchId) public view returns (address){
@@ -896,6 +895,12 @@ contract MastermindGame {
         return activeMatches[matchId].player2;
     }
 
+    function getGameParam()public view returns (uint _codeSize, uint _extraReward, uint _numberTurns, uint _numberGuesses){
+        _codeSize=codeSize; //size of the code
+        _extraReward=extraReward;  //extra reward for the code maker if the code breaker is not able to guess the code.
+        _numberTurns=numberTurns;
+        _numberGuesses=numberGuesses;
+    }
     /* Function returns the Turn struct associated to the given matchId-turn couple*/
     function getTurn(uint matchId, uint turnId) public view returns (Turn memory){
         Turn memory i=activeMatches[matchId].turns[turnId];

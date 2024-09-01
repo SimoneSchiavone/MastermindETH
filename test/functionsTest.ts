@@ -5,7 +5,6 @@ const {utils} = require("ethers");
 import { anyValue } from "@nomicfoundation/hardhat-chai-matchers/withArgs";
 
 describe("MastermindGame Contract", function(){
-    const FIVE_MINUTES_IN_SECONDS=300;
     const codesize=5;
     const turns=4;
     const guesses=5;
@@ -219,10 +218,12 @@ describe("MastermindGame Contract", function(){
         //Check that the assignment of the value is correct in case of right parameters
         it("Constructor should initialize the game parameters", async function () {
             const {owner, MastermindGame}=await loadFixture(onlyDeployFixture);
+            expect(await MastermindGame.getGameParam()).to.deep.equal([codesize, reward, turns, guesses]);
+            /*
             expect(await MastermindGame.codeSize()).to.equal(codesize);
             expect(await MastermindGame.extraReward()).to.equal(reward);
             expect(await MastermindGame.numberTurns()).to.equal(turns);
-            expect(await MastermindGame.numberGuesses()).to.equal(guesses);
+            expect(await MastermindGame.numberGuesses()).to.equal(guesses);*/
         })
 
         it("Constructor should fails with code size <=1", async function () {
@@ -384,7 +385,7 @@ describe("MastermindGame Contract", function(){
                 const {owner, MastermindGame}=await loadFixture(onlyDeployFixture);
 
                 //No game has been created hence the call should fail
-                await expect(MastermindGame.joinMatch()).to.revertedWith("Currently no matches are available, try to create a new one!");
+                await expect(MastermindGame.joinMatch()).to.be.revertedWithCustomError(MastermindGame, "UnauthorizedOperation").withArgs("No matches available");
             })
             
             it("Revert in case of join a match created by ourself", async function(){
@@ -523,7 +524,7 @@ describe("MastermindGame Contract", function(){
             it("Fails if requested before the deadline", async function () {
                 const {owner, joiner, MastermindGame}=await loadFixture(publicMatchCreatorDeposited);
                 //Joiner did not pay the stake, owner request the refund before the 5 minutes deadline
-                await expect(MastermindGame.requestRefundMatchStake(0)).to.revertedWith("You cannot request the refund until the deadline for the payments is expired!");
+                await expect(MastermindGame.requestRefundMatchStake(0)).to.revertedWithCustomError(MastermindGame, "UnauthorizedOperation").withArgs("Deadline not expired");
             })
             it("Properly do the refund when the pre-requisites are met", async function () {
                 const {owner, joiner, MastermindGame}=await loadFixture(publicMatchCreatorDeposited);
@@ -668,10 +669,10 @@ describe("MastermindGame Contract", function(){
             const guess="BBRAV";
             if((await MastermindGame.getCodeMaker(0,0))==owner.address){
                 //The codemaker is 'owner' hence it cannot guess
-                await expect(MastermindGame.connect(joiner).guessTheCode(0, 0, guess)).to.revertedWithCustomError(MastermindGame, "UnauthorizedOperation").withArgs("Turn suspended, no more guesses admitted");
+                await expect(MastermindGame.connect(joiner).guessTheCode(0, 0, guess)).to.revertedWithCustomError(MastermindGame, "UnauthorizedOperation").withArgs("Turn suspended");
             }else{
                 //The codemaker is 'joiner' hence it cannot guess
-                await expect(MastermindGame.guessTheCode(0, 0, guess)).to.revertedWithCustomError(MastermindGame, "UnauthorizedOperation").withArgs("Turn suspended, no more guesses admitted");
+                await expect(MastermindGame.guessTheCode(0, 0, guess)).to.revertedWithCustomError(MastermindGame, "UnauthorizedOperation").withArgs("Turn suspended");
             }
 
             
@@ -695,11 +696,11 @@ describe("MastermindGame Contract", function(){
             if((await MastermindGame.getCodeMaker(0,0))==owner.address){
                 //The codemaker is 'owner' hence 'joiner' has to guess
                 await expect(MastermindGame.connect(joiner).guessTheCode(0, 0, guess)).not.to.be.reverted;
-                await expect(MastermindGame.connect(joiner).guessTheCode(0, 0, "BRAVG")).to.revertedWith("You need to wait the feedback from the codeMaker regarding the last code you have proposed!");
+                await expect(MastermindGame.connect(joiner).guessTheCode(0, 0, "BRAVG")).to.revertedWithCustomError(MastermindGame,"UnauthorizedOperation",).withArgs("Wait the feedback");
             }else{
                 //The codemaker is 'joiner' hence 'owner' has guess
                 await expect(MastermindGame.guessTheCode(0, 0, guess)).not.to.be.reverted;
-                await expect(MastermindGame.guessTheCode(0, 0, "BRAVG")).to.revertedWith("You need to wait the feedback from the codeMaker regarding the last code you have proposed!");             
+                await expect(MastermindGame.guessTheCode(0, 0, "BRAVG")).to.revertedWithCustomError(MastermindGame,"UnauthorizedOperation",).withArgs("Wait the feedback");
             }
         })
 
@@ -815,21 +816,21 @@ describe("MastermindGame Contract", function(){
             if((await MastermindGame.getCodeMaker(0,0))==owner.address){
                 //codeMaker 'owner', codeBreaker 'joiner'
                 //Case: 0 guesses sent
-                await expect(MastermindGame.publishFeedback(0, 0, 0, 1)).to.revertedWith("The codeBreakers has not yet provided a guess!");
+                await expect(MastermindGame.publishFeedback(0, 0, 0, 1)).to.be.revertedWithCustomError(MastermindGame,"UnauthorizedOperation").withArgs("No guesses available");
                 //Case: some guesses previously sent but not for the current attempt 
                 const guess="BBRAV";
                 await expect(MastermindGame.connect(joiner).guessTheCode(0, 0, guess)).not.to.be.reverted;
                 await expect(MastermindGame.publishFeedback(0, 0, 0, 3)).not.to.be.reverted;
-                await expect(MastermindGame.publishFeedback(0, 0, 0, 3)).to.be.revertedWith("Feedback already provided for this attempt, wait for another guess of the codeBreaker!");
+                await expect(MastermindGame.publishFeedback(0, 0, 0, 3)).to.be.revertedWithCustomError(MastermindGame,"DuplicateOperation").withArgs("Feedback already provided");
             }else{
                 //codeMaker 'joiner', codeBreaker 'owner'
                 //Case: 0 guesses sent
-                await expect(MastermindGame.connect(joiner).publishFeedback(0, 0, 0, 1)).to.revertedWith("The codeBreakers has not yet provided a guess!");
+                await expect(MastermindGame.connect(joiner).publishFeedback(0, 0, 0, 1)).to.be.revertedWithCustomError(MastermindGame,"UnauthorizedOperation").withArgs("No guesses available");
                 //Case: some guesses previously sent but not for the current attempt 
                 const guess="BBRAV";
                 await expect(MastermindGame.guessTheCode(0, 0, guess)).not.to.be.reverted;
                 await expect(MastermindGame.connect(joiner).publishFeedback(0, 0, 0, 3)).not.to.be.reverted;
-                await expect(MastermindGame.connect(joiner).publishFeedback(0, 0, 0, 3)).to.be.revertedWith("Feedback already provided for this attempt, wait for another guess of the codeBreaker!");
+                await expect(MastermindGame.connect(joiner).publishFeedback(0, 0, 0, 3)).to.be.revertedWithCustomError(MastermindGame,"DuplicateOperation").withArgs("Feedback already provided");
             }
         })
 
