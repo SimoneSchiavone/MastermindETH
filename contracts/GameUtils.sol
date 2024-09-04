@@ -17,8 +17,8 @@ library GameUtils{
     //event emitted when an opponent joins a match that was waiting
     event matchStakeFixed(uint matchId, uint amount); 
     //notifies that an agreement between the 2 player has been reached and it shows the amount to pay
-    event matchStakeDeposited(uint matchId); 
-    //notifies that both player have deposited the match stake for that match
+    event matchStakeDeposited(uint matchId, address who); 
+    //notifies that both the player has deposited the stake for that match
     event matchDeleted(uint matchId); 
     //notifies the deletion of that match from the active ones
     event newTurnStarted(uint matchId, uint turnNum, address codeMaker); 
@@ -45,7 +45,7 @@ library GameUtils{
     //The event notifies that the reported player did not take any action within the agreed time.
 
     //----------ERRORS----------
-    error InvalidParameter(string which, string reason);
+    error InvalidParameter(string reason);
     error MatchNotFound(uint matchId);
     error TurnNotFound(uint turnId);
     error DuplicateOperation(string reason);

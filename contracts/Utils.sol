@@ -10,10 +10,8 @@ import "hardhat/console.sol";
 
 library Utils{
 
-    /**
-     * @notice The functions return a pseudo-random number lower than mod
-     * @param mod int used in the % operation to get a number lower than mod
-     */
+    /** @notice The functions return a pseudo-random number lower than mod
+     * @param mod int used in the % operation to get a number lower than mod */
     function randNo(uint mod) external view returns (uint){
         bytes32 bhash= blockhash(block.number-1);
         bytes memory bytesArray = new bytes(32);
@@ -25,12 +23,10 @@ library Utils{
         return out;
     }
 
-    /**
-     * @notice Pure function that finds a given uint in an array of uints. It returns the
+    /** @notice Pure function that finds a given uint in an array of uints. It returns the
      * index in the array of the occurrence if present, otherwise it revets the execution.
      * @param array base array on which we carry out the search.
-     * @param target value to find.
-     */
+     * @param target value to find. */
     function uintArrayFind(uint[] memory array, uint target) external pure returns (uint){
         for(uint i=0; i<array.length;i++){
             if(array[i]==target){
@@ -40,12 +36,10 @@ library Utils{
         revert("Value not found in the array!");
     }
 
-    /**
-     * @notice Pure function that checks the presence of a given uint in an array of uints. It returns
+    /** @notice Pure function that checks the presence of a given uint in an array of uints. It returns
      * true if there is an occurrence, false otherwise.
      * @param array base array on which we carry out the search.
-     * @param target value to find.
-     */
+     * @param target value to find. */
     function uintArrayContains(uint[] memory array, uint target) external pure returns (bool){
         for(uint i=0; i<array.length;i++){
             if(array[i]==target){
@@ -55,6 +49,7 @@ library Utils{
         return false;
     }
 
+    /**@notice pure function used to check if two strings are equal. */
     function strcmp(string memory origin, string memory toCheck) external pure returns(bool){
         return (keccak256(abi.encodePacked((origin))) == keccak256(abi.encodePacked((toCheck))));
     }

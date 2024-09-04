@@ -3,13 +3,13 @@ import {loadFixture} from "@nomicfoundation/hardhat-toolbox/network-helpers";
 import hre, {ethers} from "hardhat";
 const {utils} = require("ethers");
 import { anyValue } from "@nomicfoundation/hardhat-chai-matchers/withArgs";
-import { match } from "assert";
 
 const CODE_SIZE=5;
 const NUMBER_OF_GUESSES=5;
 const NUMBER_OF_TURNS=4;
 const EXTRA_REWARD=2;
 
+//Deployment fixture
 async function Deployment() {
     const [owner, player1, player2]=await ethers.getSigners();
     
@@ -28,6 +28,11 @@ async function Deployment() {
     return{player1, player2, MastermindGame}
 }
 
+/*
+****************************************
+*    Functions for match operations    *
+****************************************
+*/
 async function guess(contract:any, matchId: number, turnId: number, who:any, what:string){
         let tx=await contract.connect(who).guessTheCode(matchId, turnId, what);
         await expect(tx).not.to.be.reverted;
@@ -84,6 +89,12 @@ async function endturn(contract:any, matchId: number, turnId: number, who:any, w
 }
 
 describe("MATCH SIMULATIONS", function(){
+    /*
+        ****************************************
+        *      Regular private match sim.      *
+        ****************************************
+    */
+
     it("REGULAR PRIVATE MATCH SIMULATION", async function(){
         /** In this use case scenario we would like to test the correctness of the procedures
          * invoked during the execution of a private match. A 'private match' is a match in which
@@ -118,25 +129,26 @@ describe("MATCH SIMULATIONS", function(){
         /*When both player have joined the match, they have to deposit the stake. Here we assume that
         the amount of wei to send is agreed offchain by the 2 parties. Let's suppose that they have chosen
         to put in stake 20 WEI. The match creator is responsible for setting this information inside the state
-        of the match through the function call setStakeValue(0, 4).*/
+        of the match through the function call setStakeValue(0, 20).*/
         tx=await MastermindGame.connect(player1).setStakeValue(0, 20);
         await expect(tx).not.to.be.reverted;
         await expect(tx).to.emit(MastermindGame, "matchStakeFixed").withArgs(0, 20);
         
-        /*When both player have joined the match, they have to deposit the stake. Here we assume that
-        the amount of wei to send is agreed offchain by the 2 parties. Let's suppose that they have chosen
-        to put in stake 20 WEI. The match creator is responsible for setting this information inside the state
-        of the match through the function call setStakeValue(0, 20). An event is emitted whenever both player
-        have deposited the stake and the first turn of the match will be automatically created. In that case
-        the codeMaker role will be randomly assigned between the 2 players.*/
+        /*An event is emitted when the match stake is fixed and then the two players have to pay the agreed amout of WEI.
+        An event is emitted whenever a payment is performed. When both players have deposited the stake the first turn 
+        of the match will be automatically created. In that case the codeMaker role will be randomly assigned between the 2 players.*/
         let match_stake=20; 
+
         tx=await MastermindGame.connect(player1).depositStake(0, {value:match_stake});
         await expect(tx).not.to.be.reverted;
         await expect(tx).to.changeEtherBalances([player1, MastermindGame] ,[-match_stake, match_stake]);
+        await expect(tx).to.emit(MastermindGame,"matchStakeDeposited").withArgs(0, player1.address);
+
         tx=await MastermindGame.connect(player2).depositStake(0, {value:match_stake});
         await expect(tx).not.to.be.reverted;
         await expect(tx).to.changeEtherBalances([player2, MastermindGame] ,[-match_stake, match_stake]);
-        await expect(tx).to.emit(MastermindGame,"matchStakeDeposited").withArgs(0);
+        await expect(tx).to.emit(MastermindGame,"matchStakeDeposited").withArgs(0, player2.address);
+
         //Initialization of the turn 0 of the match 0
         await expect(tx).to.emit(MastermindGame,"newTurnStarted").withArgs(0, 0, anyValue);
             
@@ -166,7 +178,7 @@ describe("MATCH SIMULATIONS", function(){
             }else{
                 await guess(MastermindGame, 0, 0, player1, codeGuess);
             } 
-                
+            
             if((await MastermindGame.getCodeMaker(0,0))==player1.address){
                 await answer(MastermindGame, 0, 0, 0, player1, 3, 0);            
             }else{
@@ -182,7 +194,6 @@ describe("MATCH SIMULATIONS", function(){
             } 
                 
             if((await MastermindGame.getCodeMaker(0,0))==player1.address){
-                //PublishFeedback (matchId, turnId, correctPos, correctColors)
                 await answer(MastermindGame, 0, 0, 1, player1, 2, 1);            
             }else{
                 await answer(MastermindGame, 0, 0, 1, player2, 2, 1);
@@ -197,7 +208,6 @@ describe("MATCH SIMULATIONS", function(){
             } 
                 
             if((await MastermindGame.getCodeMaker(0,0))==player1.address){
-                //PublishFeedback (matchId, turnId, correctPos, correctColors)
                 await answer(MastermindGame, 0, 0, 2, player1, 5, 0);            
             }else{
                 await answer(MastermindGame, 0, 0, 2, player2, 5, 0);
@@ -205,7 +215,7 @@ describe("MATCH SIMULATIONS", function(){
             
             //---SECRET PUBLICATION---
             /*The codeMaker publish the secret code in clear so that the contract can check that it has not
-            changed that code during the turn. If all the check are passed the function will emit an event which
+            changed that code during the turn. If all the checks are passed the function will emit an event which
             informs the codeBreaker about the possibility to open a dispute within a certain time.*/ 
             if((await MastermindGame.getCodeMaker(0,0))==player1.address){
                 await secretcodepublish(MastermindGame, 0, 0, player1, code);
@@ -214,17 +224,17 @@ describe("MATCH SIMULATIONS", function(){
             }
             
             //---TURN ENDS WITHOUT DISPUTES---
-            /*Whenever the codeMaker has published the secret code, the codeBreaker can confirm that the codeMaker
-            has behaved correctly during the turn by calling the EndTurn function, or may open a dispute withing a
-            certain time window in order to report a maliciuos behavior and trigger the punishment procedure.
-            The codemaker has earned 2 points*/
+            /*Whenever the codeMaker has published the secret code, the codeBreaker:
+            ---> can confirm that the codeMaker has behaved correctly during the turn by calling the EndTurn function
+            ---> can open a dispute within a certain time window in order to report a maliciuos behavior and trigger 
+                 the punishment procedure.*/
             if((await MastermindGame.getCodeMaker(0,0))==player1.address){
                 await endturn(MastermindGame, 0, 0, player2);
             }else{
                 await endturn(MastermindGame, 0, 0, player1);
             }
 
-            //The codeBreaker has earned 2 points
+            //The codeMaker has earned 2 points because the codeBreaker has failed twice
             if(await MastermindGame.getCodeMaker(0,0)==player1.address){
                 expect(await MastermindGame.getActualPoints(0)).not.to.be.reverted.and.to.equal([2, 0]);
             }else{
@@ -235,7 +245,7 @@ describe("MATCH SIMULATIONS", function(){
         //************************************************************
         //TURN 1: Ended in 5 attempts (CODE NOT GUESSED)   
         {   
-            //All the fuction calls in this block will have as parameters matchId=0 turnId=1
+            //All the function calls in this block will have as parameters matchId=0 turnId=1
             let code="YAPTR";
             if((await MastermindGame.getCodeMaker(0, 1))==player1.address){
                 await hashpublish(MastermindGame, 0, 1, player1, code);
@@ -271,7 +281,6 @@ describe("MATCH SIMULATIONS", function(){
             } 
                 
             if((await MastermindGame.getCodeMaker(0,1))==player1.address){
-                //PublishFeedback (matchId, turnId, correctPos, correctColors)
                 await answer(MastermindGame, 0, 1, 1, player1, 2, 1);            
             }else{
                 await answer(MastermindGame, 0, 1, 1, player2, 2, 1);
@@ -286,7 +295,6 @@ describe("MATCH SIMULATIONS", function(){
             } 
                 
             if((await MastermindGame.getCodeMaker(0,1))==player1.address){
-                //PublishFeedback (matchId, turnId, correctPos, correctColors)
                 await answer(MastermindGame, 0, 1, 2, player1, 3, 0);            
             }else{
                 await answer(MastermindGame, 0, 1, 2, player2, 3, 0);
@@ -301,7 +309,6 @@ describe("MATCH SIMULATIONS", function(){
             } 
                 
             if((await MastermindGame.getCodeMaker(0,1))==player1.address){
-                //PublishFeedback (matchId, turnId, correctPos, correctColors)
                 await answer(MastermindGame, 0, 1, 3, player1, 2, 1);            
             }else{
                 await answer(MastermindGame, 0, 1, 3, player2, 2, 1);
@@ -316,7 +323,6 @@ describe("MATCH SIMULATIONS", function(){
             }  
                 
             if((await MastermindGame.getCodeMaker(0,1))==player1.address){
-                //PublishFeedback (matchId, turnId, correctPos, correctColors)
                 await answer(MastermindGame, 0, 1, 4, player1, 1, 4);            
             }else{
                 await answer(MastermindGame, 0, 1, 4, player2, 1, 4);
@@ -338,7 +344,7 @@ describe("MATCH SIMULATIONS", function(){
                 await endturn(MastermindGame, 0, 1, player1);
             }
 
-            //The codeBreaker has earned 5+2 points
+            //The codeMaker has earned 5+2 points
             if(await MastermindGame.getCodeMaker(0,0)==player1.address){
                 expect(await MastermindGame.getActualPoints(0)).not.to.be.reverted.and.to.equal([2, 7]);
             }else{
@@ -355,11 +361,7 @@ describe("MATCH SIMULATIONS", function(){
                 await hashpublish(MastermindGame, 0, 2, player1, code);
             }else{
                 await hashpublish(MastermindGame, 0, 2, player2, code);
-            } 
-            
-            /* Let's suppose that the codeBreaker sends the code "PCGVY". As we can see the number of perfect matches is 3
-            while the number of partial matches (right color but wrong position is 0). So the codeMaker will answer that event
-            by providing the feedback [0, 1] */
+            }
             
             //---GUESS #0 [FAILED]---
                     
@@ -385,7 +387,6 @@ describe("MATCH SIMULATIONS", function(){
             } 
                 
             if((await MastermindGame.getCodeMaker(0, 2))==player1.address){
-                //PublishFeedback (matchId, turnId, correctPos, correctColors)
                 await answer(MastermindGame, 0, 2, 1, player1, 0, 3);            
             }else{
                 await answer(MastermindGame, 0, 2, 1, player2, 0, 3);
@@ -400,7 +401,6 @@ describe("MATCH SIMULATIONS", function(){
             } 
                 
             if((await MastermindGame.getCodeMaker(0, 2))==player1.address){
-                //PublishFeedback (matchId, turnId, correctPos, correctColors)
                 await answer(MastermindGame, 0, 2, 2, player1, 0, 2);            
             }else{
                 await answer(MastermindGame, 0, 2, 2, player2, 0, 2);
@@ -415,7 +415,6 @@ describe("MATCH SIMULATIONS", function(){
             } 
                 
             if((await MastermindGame.getCodeMaker(0, 2))==player1.address){
-                //PublishFeedback (matchId, turnId, correctPos, correctColors)
                 await answer(MastermindGame, 0, 2, 3, player1, 1, 2);            
             }else{
                 await answer(MastermindGame, 0, 2, 3, player2, 1, 2);
@@ -430,7 +429,6 @@ describe("MATCH SIMULATIONS", function(){
             }  
                 
             if((await MastermindGame.getCodeMaker(0, 2))==player1.address){
-                //PublishFeedback (matchId, turnId, correctPos, correctColors)
                 await answer(MastermindGame, 0, 2, 4, player1, 0, 3);            
             }else{
                 await answer(MastermindGame, 0, 2, 4, player2, 0, 3);
@@ -452,7 +450,7 @@ describe("MATCH SIMULATIONS", function(){
                 await endturn(MastermindGame, 0, 2, player1);
             }
 
-            //The codeBreaker has earned 5+2 points
+            //The codeMaker has earned 5+2 points
             if(await MastermindGame.getCodeMaker(0,0)==player1.address){
                 expect(await MastermindGame.getActualPoints(0)).not.to.be.reverted.and.to.equal([9, 7]);
             }else{
@@ -470,10 +468,6 @@ describe("MATCH SIMULATIONS", function(){
             }else{
                 await hashpublish(MastermindGame, 0, 3, player2, code);
             } 
-            
-            /* Let's suppose that the codeBreaker sends the code "PCGVY". As we can see the number of perfect matches is 3
-            while the number of partial matches (right color but wrong position is 0). So the codeMaker will answer that event
-            by providing the feedback [0, 1] */
             
             //---GUESS #0 [FAILED]---
                     
@@ -513,21 +507,26 @@ describe("MATCH SIMULATIONS", function(){
             }
             
             //---TURN ENDS WITHOUT DISPUTES---
-            //The codeMaker has earned 5 (attemtps) + 2 (extra) = 7 points
+            //The winner will be the last codeBreaker with final score [9, 8]
             if((await MastermindGame.getCodeMaker(0, 3))==player1.address){
-                //PublishFeedback (matchId, turnId, correctPos, correctColors)
-                await endturn(MastermindGame, 0, 3, player2, player1.address);
+                await endturn(MastermindGame, 0, 3, player2, player2.address);
             }else{
-                await endturn(MastermindGame, 0, 3, player1, player2.address);
+                await endturn(MastermindGame, 0, 3, player1, player1.address);
             }
         }         
     })
+
+    /*
+        ****************************************
+        *      Regular public match sim.       *
+        ****************************************
+    */
 
     it("REGULAR PUBLIC MATCH SIMULATION", async function(){
         /** In this use case scenario we would like to test the correctness of the procedures
          * invoked during the execution of a public match. A 'public match' is a match in which
          * the creator has not specified the address of his contender, hence any other player can
-         * yoin that match. The turn operations are the same of the case above so repetitive comments
+         * join that match. The turn operations are the same of the case above so repetitive comments
          * are omitted .*/
         
         const {player1, player2, MastermindGame}=await loadFixture(Deployment);
@@ -559,11 +558,14 @@ describe("MATCH SIMULATIONS", function(){
         //---STAKE DEPOSIT---        
         tx=await MastermindGame.connect(player1).depositStake(0, {value:match_stake});
         await expect(tx).not.to.be.reverted;
-        await expect(tx).to.changeEtherBalances([player1, MastermindGame], [-match_stake, match_stake]);
+        await expect(tx).to.changeEtherBalances([player1, MastermindGame] ,[-match_stake, match_stake]);
+        await expect(tx).to.emit(MastermindGame,"matchStakeDeposited").withArgs(0, player1.address);
+
         tx=await MastermindGame.connect(player2).depositStake(0, {value:match_stake});
         await expect(tx).not.to.be.reverted;
-        await expect(tx).to.changeEtherBalances([player2, MastermindGame], [-match_stake, match_stake]);
-        await expect(tx).to.emit(MastermindGame,"matchStakeDeposited").withArgs(0);
+        await expect(tx).to.changeEtherBalances([player2, MastermindGame] ,[-match_stake, match_stake]);
+        await expect(tx).to.emit(MastermindGame,"matchStakeDeposited").withArgs(0, player2.address);
+
         //Initialization of the turn 0 of the match 0
         await expect(tx).to.emit(MastermindGame,"newTurnStarted").withArgs(0, 0, anyValue);
             
@@ -600,7 +602,6 @@ describe("MATCH SIMULATIONS", function(){
             } 
                 
             if((await MastermindGame.getCodeMaker(0,0))==player1.address){
-                //PublishFeedback (matchId, turnId, correctPos, correctColors)
                 await answer(MastermindGame, 0, 0, 1, player1, 2, 1);            
             }else{
                 await answer(MastermindGame, 0, 0, 1, player2, 2, 1);
@@ -615,7 +616,6 @@ describe("MATCH SIMULATIONS", function(){
             } 
                 
             if((await MastermindGame.getCodeMaker(0,0))==player1.address){
-                //PublishFeedback (matchId, turnId, correctPos, correctColors)
                 await answer(MastermindGame, 0, 0, 2, player1, 5, 0);            
             }else{
                 await answer(MastermindGame, 0, 0, 2, player2, 5, 0);
@@ -635,7 +635,7 @@ describe("MATCH SIMULATIONS", function(){
                 await endturn(MastermindGame, 0, 0, player1);
             }
 
-            //The codeBreaker has earned 2 points
+            //The codeMaker has earned 2 points
             if(await MastermindGame.getCodeMaker(0,0)==player1.address){
                 expect(await MastermindGame.getActualPoints(0)).not.to.be.reverted.and.to.equal([2, 0]);
             }else{
@@ -677,7 +677,6 @@ describe("MATCH SIMULATIONS", function(){
             } 
                 
             if((await MastermindGame.getCodeMaker(0,1))==player1.address){
-                //PublishFeedback (matchId, turnId, correctPos, correctColors)
                 await answer(MastermindGame, 0, 1, 1, player1, 2, 1);            
             }else{
                 await answer(MastermindGame, 0, 1, 1, player2, 2, 1);
@@ -692,7 +691,6 @@ describe("MATCH SIMULATIONS", function(){
             } 
                 
             if((await MastermindGame.getCodeMaker(0,1))==player1.address){
-                //PublishFeedback (matchId, turnId, correctPos, correctColors)
                 await answer(MastermindGame, 0, 1, 2, player1, 3, 0);            
             }else{
                 await answer(MastermindGame, 0, 1, 2, player2, 3, 0);
@@ -707,7 +705,6 @@ describe("MATCH SIMULATIONS", function(){
             } 
                 
             if((await MastermindGame.getCodeMaker(0,1))==player1.address){
-                //PublishFeedback (matchId, turnId, correctPos, correctColors)
                 await answer(MastermindGame, 0, 1, 3, player1, 2, 1);            
             }else{
                 await answer(MastermindGame, 0, 1, 3, player2, 2, 1);
@@ -722,7 +719,6 @@ describe("MATCH SIMULATIONS", function(){
             }  
                 
             if((await MastermindGame.getCodeMaker(0,1))==player1.address){
-                //PublishFeedback (matchId, turnId, correctPos, correctColors)
                 await answer(MastermindGame, 0, 1, 4, player1, 1, 4);            
             }else{
                 await answer(MastermindGame, 0, 1, 4, player2, 1, 4);
@@ -739,7 +735,6 @@ describe("MATCH SIMULATIONS", function(){
             //---TURN ENDS WITHOUT DISPUTES---
             //The codeMaker has earned 5 (attemtps) + 2 (extra) = 7 points
             if((await MastermindGame.getCodeMaker(0, 1))==player1.address){
-                //PublishFeedback (matchId, turnId, correctPos, correctColors)
                 await endturn(MastermindGame, 0, 1, player2);
             }else{
                 await endturn(MastermindGame, 0, 1, player1);
@@ -892,7 +887,6 @@ describe("MATCH SIMULATIONS", function(){
             } 
                 
             if((await MastermindGame.getCodeMaker(0, 3))==player1.address){
-                //PublishFeedback (matchId, turnId, correctPos, correctColors)
                 await answer(MastermindGame, 0, 3, 1, player1, 5, 0);            
             }else{
                 await answer(MastermindGame, 0, 3, 1, player2, 5, 0);
@@ -909,12 +903,19 @@ describe("MATCH SIMULATIONS", function(){
             //---TURN ENDS WITHOUT DISPUTES---
             //The codeMaker has earned 5 (attemtps) + 2 (extra) = 7 points
             if((await MastermindGame.getCodeMaker(0, 3))==player1.address){
-                await endturn(MastermindGame, 0, 3, player2, player1.address);
+                await endturn(MastermindGame, 0, 3, player2, player2.address);
             }else{
-                await endturn(MastermindGame, 0, 3, player1, player2.address);
+                await endturn(MastermindGame, 0, 3, player1, player1.address);
             }
+
         }      
     })
+
+    /*
+        ****************************************
+        *            Tie match sim.            *
+        ****************************************
+    */
 
     it("TIE MATCH SIMULATION", async function(){
          /** In this use case scenario we would like to test the correctness of the procedures
@@ -945,11 +946,13 @@ describe("MATCH SIMULATIONS", function(){
         let match_stake=20;
         tx=await MastermindGame.connect(player1).depositStake(0, {value:match_stake});
         await expect(tx).not.to.be.reverted;
-        await expect(tx).to.changeEtherBalances([player1, MastermindGame], [-match_stake, match_stake]);
+        await expect(tx).to.changeEtherBalances([player1, MastermindGame] ,[-match_stake, match_stake]);
+        await expect(tx).to.emit(MastermindGame,"matchStakeDeposited").withArgs(0, player1.address);
+
         tx=await MastermindGame.connect(player2).depositStake(0, {value:match_stake});
         await expect(tx).not.to.be.reverted;
-        await expect(tx).to.changeEtherBalances([player2, MastermindGame], [-match_stake, match_stake]);
-        await expect(tx).to.emit(MastermindGame,"matchStakeDeposited").withArgs(0);
+        await expect(tx).to.changeEtherBalances([player2, MastermindGame] ,[-match_stake, match_stake]);
+        await expect(tx).to.emit(MastermindGame,"matchStakeDeposited").withArgs(0, player2.address);
         //Initialization of the turn 0 of the match 0
         await expect(tx).to.emit(MastermindGame,"newTurnStarted").withArgs(0, 0, anyValue);
             
@@ -986,7 +989,6 @@ describe("MATCH SIMULATIONS", function(){
             } 
                 
             if((await MastermindGame.getCodeMaker(0,0))==player1.address){
-                //PublishFeedback (matchId, turnId, correctPos, correctColors)
                 await answer(MastermindGame, 0, 0, 1, player1, 5, 0);            
             }else{
                 await answer(MastermindGame, 0, 0, 1, player2, 5, 0);
@@ -1006,7 +1008,7 @@ describe("MATCH SIMULATIONS", function(){
                 await endturn(MastermindGame, 0, 0, player1);
             }
 
-            //The codeBreaker has earned 2 points
+            //The codeMaker has earned 2 points
             if(await MastermindGame.getCodeMaker(0,0)==player1.address){
                 expect(await MastermindGame.getActualPoints(0)).not.to.be.reverted.and.to.equal([2, 0]);
             }else{
@@ -1048,7 +1050,6 @@ describe("MATCH SIMULATIONS", function(){
             } 
                 
             if((await MastermindGame.getCodeMaker(0,1))==player1.address){
-                //PublishFeedback (matchId, turnId, correctPos, correctColors)
                 await answer(MastermindGame, 0, 1, 1, player1, 2, 1);            
             }else{
                 await answer(MastermindGame, 0, 1, 1, player2, 2, 1);
@@ -1063,7 +1064,6 @@ describe("MATCH SIMULATIONS", function(){
             } 
                 
             if((await MastermindGame.getCodeMaker(0,1))==player1.address){
-                //PublishFeedback (matchId, turnId, correctPos, correctColors)
                 await answer(MastermindGame, 0, 1, 2, player1, 3, 0);            
             }else{
                 await answer(MastermindGame, 0, 1, 2, player2, 3, 0);
@@ -1078,7 +1078,6 @@ describe("MATCH SIMULATIONS", function(){
             } 
                 
             if((await MastermindGame.getCodeMaker(0,1))==player1.address){
-                //PublishFeedback (matchId, turnId, correctPos, correctColors)
                 await answer(MastermindGame, 0, 1, 3, player1, 2, 1);            
             }else{
                 await answer(MastermindGame, 0, 1, 3, player2, 2, 1);
@@ -1093,7 +1092,6 @@ describe("MATCH SIMULATIONS", function(){
             }  
                 
             if((await MastermindGame.getCodeMaker(0,1))==player1.address){
-                //PublishFeedback (matchId, turnId, correctPos, correctColors)
                 await answer(MastermindGame, 0, 1, 4, player1, 1, 4);            
             }else{
                 await answer(MastermindGame, 0, 1, 4, player2, 1, 4);
@@ -1102,7 +1100,6 @@ describe("MATCH SIMULATIONS", function(){
             //---SECRET PUBLICATION---
             //The turn is ended because the bound on the attempts has been reached. 
             if((await MastermindGame.getCodeMaker(0,1))==player1.address){
-                //PublishFeedback (matchId, turnId, correctPos, correctColors)
                 await secretcodepublish(MastermindGame, 0, 1, player1, code);
             }else{
                 await secretcodepublish(MastermindGame, 0, 1, player2, code);
@@ -1156,7 +1153,6 @@ describe("MATCH SIMULATIONS", function(){
             } 
                 
             if((await MastermindGame.getCodeMaker(0, 2))==player1.address){
-                //PublishFeedback (matchId, turnId, correctPos, correctColors)
                 await answer(MastermindGame, 0, 2, 1, player1, 0, 3);            
             }else{
                 await answer(MastermindGame, 0, 2, 1, player2, 0, 3);
@@ -1171,7 +1167,6 @@ describe("MATCH SIMULATIONS", function(){
             } 
                 
             if((await MastermindGame.getCodeMaker(0, 2))==player1.address){
-                //PublishFeedback (matchId, turnId, correctPos, correctColors)
                 await answer(MastermindGame, 0, 2, 2, player1, 0, 2);            
             }else{
                 await answer(MastermindGame, 0, 2, 2, player2, 0, 2);
@@ -1186,7 +1181,6 @@ describe("MATCH SIMULATIONS", function(){
             } 
                 
             if((await MastermindGame.getCodeMaker(0, 2))==player1.address){
-                //PublishFeedback (matchId, turnId, correctPos, correctColors)
                 await answer(MastermindGame, 0, 2, 3, player1, 1, 2);            
             }else{
                 await answer(MastermindGame, 0, 2, 3, player2, 1, 2);
@@ -1262,7 +1256,6 @@ describe("MATCH SIMULATIONS", function(){
             } 
                 
             if((await MastermindGame.getCodeMaker(0, 3))==player1.address){
-                //PublishFeedback (matchId, turnId, correctPos, correctColors)
                 await answer(MastermindGame, 0, 3, 1, player1, 5, 0);            
             }else{
                 await answer(MastermindGame, 0, 3, 1, player2, 5, 0);
@@ -1271,7 +1264,6 @@ describe("MATCH SIMULATIONS", function(){
             //---SECRET PUBLICATION---
             //The turn is ended because the code has been discovered
             if((await MastermindGame.getCodeMaker(0, 3))==player1.address){
-                //PublishFeedback (matchId, turnId, correctPos, correctColors)
                 await secretcodepublish(MastermindGame, 0, 3, player1, code);
             }else{
                 await secretcodepublish(MastermindGame, 0, 3, player2, code);
@@ -1289,9 +1281,15 @@ describe("MATCH SIMULATIONS", function(){
         }       
     })
 
+    /*
+        ****************************************
+        *       Stake not deposited sim.       *
+        ****************************************
+     */
+
     it("STAKE NOT DEPOSITED SIMULATION", async function(){
         /** In this use case scenario we would like to test the correctness of the procedures
-        * invoked during the execution of a public match which ends with a tie. The operations
+        * invoked during the execution of a public match in which the match stake is not deposited. The operations
         * are pretty like those in the first/second simulation, so repetitive comments are omitted.*/
        
        const {player1, player2, MastermindGame}=await loadFixture(Deployment);
@@ -1321,7 +1319,7 @@ describe("MATCH SIMULATIONS", function(){
        await expect(tx).to.changeEtherBalance(player1, -match_stake);
        
        /*---PLAYER 2 DO NOT DEPOSIT THE MATCH STAKE---
-       * The other player does not deposit the required match stake within a certain window time that, in this
+       * The other player does not deposit the required match stake within a certain time window that, in this
        * contract is fixed to 25 blocks (a block each 12 secs on average, hence in total approximately 5 minutes).
        * The player who has already paid can request the contract to be refunded. The amount of wei will be sent
        * back to player1 and the game will deleted. */
@@ -1332,13 +1330,19 @@ describe("MATCH SIMULATIONS", function(){
        await expect(tx).to.emit(MastermindGame,"matchDeleted").withArgs(0);
     })
 
+    /*
+        ****************************************
+        *           AFK player sim.            *
+        ****************************************
+    */
+
     it("AFK SIMULATION", async function(){
         /** In this use case scenario we would like to test the correctness of the procedures
         * invoked during the execution of a public match in case of one of the 2 players who goes AFK.
         * The player who thinks that the opponent has gone AFK should invoke the proper method to report that
         * to the Mastermind contract. This will trigger the emission of a specific event and the presumed AFK 
         * player should answer to that by performing the required action within a fixed time window. If no
-        * action is take the reporter will receive all the stake for that match and the match will be deleted.*/
+        * action is taken the reporter will receive all the stake for that match and the match will be deleted.*/
     
         const {player1, player2, MastermindGame}=await loadFixture(Deployment);
         
@@ -1365,11 +1369,12 @@ describe("MATCH SIMULATIONS", function(){
         //---STAKE DEPOSIT---        
         tx=await MastermindGame.connect(player1).depositStake(0, {value:match_stake});
         await expect(tx).not.to.be.reverted;
-        await expect(tx).to.changeEtherBalances([player1, MastermindGame], [-match_stake, match_stake]);
+        await expect(tx).to.changeEtherBalances([player1, MastermindGame] ,[-match_stake, match_stake]);
+        await expect(tx).to.emit(MastermindGame,"matchStakeDeposited").withArgs(0, player1.address);
         tx=await MastermindGame.connect(player2).depositStake(0, {value:match_stake});
         await expect(tx).not.to.be.reverted;
-        await expect(tx).to.changeEtherBalances([player2, MastermindGame], [-match_stake, match_stake]);
-        await expect(tx).to.emit(MastermindGame,"matchStakeDeposited").withArgs(0);
+        await expect(tx).to.changeEtherBalances([player2, MastermindGame] ,[-match_stake, match_stake]);
+        await expect(tx).to.emit(MastermindGame,"matchStakeDeposited").withArgs(0, player2.address);
         //Initialization of the turn 0 of the match 0
         await expect(tx).to.emit(MastermindGame,"newTurnStarted").withArgs(0, 0, anyValue);
             
@@ -1432,6 +1437,12 @@ describe("MATCH SIMULATIONS", function(){
         }
     })
 
+    /*
+    ****************************************
+    *       Secret code changed sim.       *
+    ****************************************
+    */
+
     it("CHEATING SIMULATION: secret code changed", async function(){
         /** In this use case scenario we would like to test the correctness of the procedures
         * invoked during the execution of a public match in case of an uncorrect behavior of the codeMaker. In
@@ -1463,11 +1474,12 @@ describe("MATCH SIMULATIONS", function(){
         //---STAKE DEPOSIT---        
         tx=await MastermindGame.connect(player1).depositStake(0, {value:match_stake});
         await expect(tx).not.to.be.reverted;
-        await expect(tx).to.changeEtherBalances([player1, MastermindGame], [-match_stake, match_stake]);
+        await expect(tx).to.changeEtherBalances([player1, MastermindGame] ,[-match_stake, match_stake]);
+        await expect(tx).to.emit(MastermindGame,"matchStakeDeposited").withArgs(0, player1.address);
         tx=await MastermindGame.connect(player2).depositStake(0, {value:match_stake});
         await expect(tx).not.to.be.reverted;
-        await expect(tx).to.changeEtherBalances([player2, MastermindGame], [-match_stake, match_stake]);
-        await expect(tx).to.emit(MastermindGame,"matchStakeDeposited").withArgs(0);
+        await expect(tx).to.changeEtherBalances([player2, MastermindGame] ,[-match_stake, match_stake]);
+        await expect(tx).to.emit(MastermindGame,"matchStakeDeposited").withArgs(0, player2.address);
         //Initialization of the turn 0 of the match 0
         await expect(tx).to.emit(MastermindGame,"newTurnStarted").withArgs(0, 0, anyValue);
             
@@ -1483,7 +1495,6 @@ describe("MATCH SIMULATIONS", function(){
             } 
             
             //---GUESS #0 [FAILED]---
-                    
             let codeGuess="PCGVY";
             if((await MastermindGame.getCodeMaker(0, 0))==player1.address){
                 await guess(MastermindGame, 0, 0, player2, codeGuess);
@@ -1506,7 +1517,6 @@ describe("MATCH SIMULATIONS", function(){
             } 
                 
             if((await MastermindGame.getCodeMaker(0, 0))==player1.address){
-                //PublishFeedback (matchId, turnId, correctPos, correctColors)
                 await answer(MastermindGame, 0, 0, 1, player1, 2, 1);            
             }else{
                 await answer(MastermindGame, 0, 0, 1, player2, 2, 1);
@@ -1521,7 +1531,6 @@ describe("MATCH SIMULATIONS", function(){
             } 
                 
             if((await MastermindGame.getCodeMaker(0, 0))==player1.address){
-                //PublishFeedback (matchId, turnId, correctPos, correctColors)
                 await answer(MastermindGame, 0, 0, 2, player1, 3, 0);            
             }else{
                 await answer(MastermindGame, 0, 0, 2, player2, 3, 0);
@@ -1536,7 +1545,6 @@ describe("MATCH SIMULATIONS", function(){
             } 
                 
             if((await MastermindGame.getCodeMaker(0, 0))==player1.address){
-                //PublishFeedback (matchId, turnId, correctPos, correctColors)
                 await answer(MastermindGame, 0, 0, 3, player1, 2, 1);            
             }else{
                 await answer(MastermindGame, 0, 0, 3, player2, 2, 1);
@@ -1551,7 +1559,6 @@ describe("MATCH SIMULATIONS", function(){
             }  
                 
             if((await MastermindGame.getCodeMaker(0, 0))==player1.address){
-                //PublishFeedback (matchId, turnId, correctPos, correctColors)
                 await answer(MastermindGame, 0, 0, 4, player1, 1, 4);            
             }else{
                 await answer(MastermindGame, 0, 0, 4, player2, 1, 4);
@@ -1560,7 +1567,7 @@ describe("MATCH SIMULATIONS", function(){
             //---SECRET PUBLICATION---
             /* The turn is ended because the bound on the attempts has been reached. The codeBreaker provides
             * a secret code which has been modified during the match.*/
-            code="TARTY"
+            code="TARTY" //Secret code was YAPTR
             if((await MastermindGame.getCodeMaker(0, 0))==player1.address){
                 let tx=await MastermindGame.connect(player1).publishSecret(0, 0, code);
                 await expect(tx).not.to.be.reverted;
@@ -1577,6 +1584,11 @@ describe("MATCH SIMULATIONS", function(){
         }
     })
 
+    /*
+        ****************************************
+        *         Wrong feedback sim.          *
+        ****************************************
+    */
     it("CHEATING SIMULATION: wrong feedback", async function(){
         /** In this use case scenario we would like to test the correctness of the procedures
         * invoked during the execution of a public match in case of an uncorrect behavior of the codeMaker. In
@@ -1610,11 +1622,13 @@ describe("MATCH SIMULATIONS", function(){
         //---STAKE DEPOSIT---        
         tx=await MastermindGame.connect(player1).depositStake(0, {value:match_stake});
         await expect(tx).not.to.be.reverted;
-        await expect(tx).to.changeEtherBalances([player1, MastermindGame], [-match_stake, match_stake]);
+        await expect(tx).to.changeEtherBalances([player1, MastermindGame] ,[-match_stake, match_stake]);
+        await expect(tx).to.emit(MastermindGame,"matchStakeDeposited").withArgs(0, player1.address);
+
         tx=await MastermindGame.connect(player2).depositStake(0, {value:match_stake});
         await expect(tx).not.to.be.reverted;
-        await expect(tx).to.changeEtherBalances([player2, MastermindGame], [-match_stake, match_stake]);
-        await expect(tx).to.emit(MastermindGame,"matchStakeDeposited").withArgs(0);
+        await expect(tx).to.changeEtherBalances([player2, MastermindGame] ,[-match_stake, match_stake]);
+        await expect(tx).to.emit(MastermindGame,"matchStakeDeposited").withArgs(0, player2.address);
         //Initialization of the turn 0 of the match 0
         await expect(tx).to.emit(MastermindGame,"newTurnStarted").withArgs(0, 0, anyValue);
             
@@ -1630,7 +1644,6 @@ describe("MATCH SIMULATIONS", function(){
             } 
             
             //---GUESS #0 [FAILED]---
-                    
             let codeGuess="PCGVY";
             if((await MastermindGame.getCodeMaker(0, 0))==player1.address){
                 await guess(MastermindGame, 0, 0, player2, codeGuess);
@@ -1653,7 +1666,6 @@ describe("MATCH SIMULATIONS", function(){
             } 
                 
             if((await MastermindGame.getCodeMaker(0, 0))==player1.address){
-                //PublishFeedback (matchId, turnId, correctPos, correctColors)
                 //Code:YAPTR Guess:WBATR Correct answer is [CC=2 NC=1]
                 await answer(MastermindGame, 0, 0, 1, player1, 0, 1);            
             }else{
@@ -1669,7 +1681,6 @@ describe("MATCH SIMULATIONS", function(){
             } 
                 
             if((await MastermindGame.getCodeMaker(0, 0))==player1.address){
-                //PublishFeedback (matchId, turnId, correctPos, correctColors)
                 await answer(MastermindGame, 0, 0, 2, player1, 3, 0);            
             }else{
                 await answer(MastermindGame, 0, 0, 2, player2, 3, 0);
@@ -1684,7 +1695,6 @@ describe("MATCH SIMULATIONS", function(){
             } 
                 
             if((await MastermindGame.getCodeMaker(0, 0))==player1.address){
-                //PublishFeedback (matchId, turnId, correctPos, correctColors)
                 await answer(MastermindGame, 0, 0, 3, player1, 2, 1);            
             }else{
                 await answer(MastermindGame, 0, 0, 3, player2, 2, 1);
@@ -1699,7 +1709,6 @@ describe("MATCH SIMULATIONS", function(){
             }  
                 
             if((await MastermindGame.getCodeMaker(0, 0))==player1.address){
-                //PublishFeedback (matchId, turnId, correctPos, correctColors)
                 await answer(MastermindGame, 0, 0, 4, player1, 1, 4);            
             }else{
                 await answer(MastermindGame, 0, 0, 4, player2, 1, 4);
@@ -1729,6 +1738,12 @@ describe("MATCH SIMULATIONS", function(){
             }
         }
     })
+
+    /*
+        ****************************************
+        *        Multiple matches sim.         *
+        ****************************************
+    */
 
     it("MULTIPLE MATCH SIMULATION", async function () {
         /** In this use case scenario we would like to test the correctness of the procedures
@@ -1789,11 +1804,12 @@ describe("MATCH SIMULATIONS", function(){
         tx=await MastermindGame.connect(user1).depositStake(0, {value: stakeValue});
         await expect(tx).not.to.be.reverted;
         await expect(tx).to.changeEtherBalances([MastermindGame, user1], [stakeValue, -stakeValue]);
+        await expect(tx).to.emit(MastermindGame, "matchStakeDeposited").withArgs(0, user1.address);
 
         tx=await MastermindGame.connect(user2).depositStake(0, {value: stakeValue});
         await expect(tx).not.to.be.reverted;
         await expect(tx).to.changeEtherBalances([MastermindGame, user2], [stakeValue, -stakeValue]);
-        await expect(tx).to.emit(MastermindGame, "matchStakeDeposited").withArgs(0); //both have deposited the stake
+        await expect(tx).to.emit(MastermindGame, "matchStakeDeposited").withArgs(0, user2.address);
         await expect(tx).to.emit(MastermindGame, "newTurnStarted").withArgs(0, 0, anyValue);
 
         expect((await MastermindGame.activeMatches(0)).deposit1).to.equal(true);
@@ -1803,11 +1819,12 @@ describe("MATCH SIMULATIONS", function(){
         tx=await MastermindGame.connect(user1).depositStake(1, {value: stakeValue});
         await expect(tx).not.to.be.reverted;
         await expect(tx).to.changeEtherBalances([MastermindGame, user1], [stakeValue, -stakeValue]);
+        await expect(tx).to.emit(MastermindGame, "matchStakeDeposited").withArgs(1, user1.address);
 
         tx=await MastermindGame.connect(user3).depositStake(1, {value: stakeValue});
         await expect(tx).not.to.be.reverted;
         await expect(tx).to.changeEtherBalances([MastermindGame, user3], [stakeValue, -stakeValue]);
-        await expect(tx).to.emit(MastermindGame, "matchStakeDeposited").withArgs(1); //both have deposited the stake
+        await expect(tx).to.emit(MastermindGame, "matchStakeDeposited").withArgs(1, user3.address); //both have deposited the stake
         await expect(tx).to.emit(MastermindGame, "newTurnStarted").withArgs(1, 0, anyValue);
 
         expect((await MastermindGame.activeMatches(1)).deposit1).to.equal(true);
@@ -1905,9 +1922,9 @@ describe("MATCH SIMULATIONS", function(){
         }
 
         if(await MastermindGame.getCodeMaker(1, 0)==user1.address){
-            expect(await MastermindGame.getActualPoints(0)).not.to.be.reverted.and.to.equal([1, 0]);
+            expect(await MastermindGame.getActualPoints(1)).not.to.be.reverted.and.to.equal([5, 0]);
         }else{
-            expect(await MastermindGame.getActualPoints(0)).not.to.be.reverted.and.to.equal([0, 1]);
+            expect(await MastermindGame.getActualPoints(1)).not.to.be.reverted.and.to.equal([0, 5]);
         }
 
         //----------Second turn of both matches----------
@@ -1970,8 +1987,52 @@ describe("MATCH SIMULATIONS", function(){
                 await guess(MastermindGame, 1, 1, user1, "BABCT");
                 await answer(MastermindGame, 1, 1, 2, user3, 0, 1);
             }
+
+            //MATCH 0 TURN 1 GUESS 2 (FAILED)
+            if(await MastermindGame.getCodeMaker(0, 1)==user1.address){
+                await guess(MastermindGame, 0, 1, user2, "TTTTT");
+                await answer(MastermindGame, 0, 1, 2, user1, 1, 0);
+            }else{
+                await guess(MastermindGame, 0, 1, user1, "TTTTT");
+                await answer(MastermindGame, 0, 1, 2, user2, 1, 0);
+            } 
         }
-       
+        
+        //secret publication by the codeMaker and acceptance by the codeBreaker (Match 0 Turn 1)
+        //The winner is the codeMaker of turn 1 [1, 5]
+        if(await MastermindGame.getCodeMaker(0, 1)==user1.address){
+            await secretcodepublish(MastermindGame, 0, 1, user1, "RVVPA");
+            let tx=await MastermindGame.connect(user2).endTurn(0, 1);
+            await expect(tx).not.to.be.reverted;
+            await expect(tx).to.emit(MastermindGame,"turnCompleted").withArgs(0, 1, 5, user1);
+            expect(await MastermindGame.getActualPoints(0)).to.deep.equal([5, 1]);
+            await expect(tx).to.emit(MastermindGame,"matchCompleted").withArgs(0, user1);
+        }else{
+            await secretcodepublish(MastermindGame, 0, 1, user2, "RVVPA");
+            let tx=await MastermindGame.connect(user1).endTurn(0, 1);
+            await expect(tx).not.to.be.reverted;
+            await expect(tx).to.emit(MastermindGame,"turnCompleted").withArgs(0, 1, 5, user2);
+            expect(await MastermindGame.getActualPoints(0)).to.deep.equal([1, 5]);
+            await expect(tx).to.emit(MastermindGame,"matchCompleted").withArgs(0, user2);
+        }
+
+        //secret publication by the codeMaker and acceptance by the codeBreaker (Match 1 Turn 1)
+        //The winner is the codeMaker of turn 1 [1, 5]
+        if(await MastermindGame.getCodeMaker(1, 1)==user1.address){
+            await secretcodepublish(MastermindGame, 1, 1, user1, "BRTGA");
+            let tx=await MastermindGame.connect(user3).endTurn(1, 1);
+            await expect(tx).not.to.be.reverted;
+            await expect(tx).to.emit(MastermindGame,"turnCompleted").withArgs(1, 1, 5, user1);
+            expect(await MastermindGame.getActualPoints(1)).to.deep.equal([5, 5]);
+            await expect(tx).to.emit(MastermindGame,"matchCompleted").withArgs(1, ethers.ZeroAddress);
+        }else{
+            await secretcodepublish(MastermindGame, 1, 1, user3, "BRTGA");
+            let tx=await MastermindGame.connect(user1).endTurn(1, 1);
+            await expect(tx).not.to.be.reverted;
+            await expect(tx).to.emit(MastermindGame,"turnCompleted").withArgs(1, 1, 5, user3);
+            expect(await MastermindGame.getActualPoints(1)).to.deep.equal([5, 5]);
+            await expect(tx).to.emit(MastermindGame,"matchCompleted").withArgs(1, ethers.ZeroAddress);
+        }
     })
 
 })
