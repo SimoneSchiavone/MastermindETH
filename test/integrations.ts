@@ -40,9 +40,14 @@ describe("Integration of UintNegotiation contract with MastermindGame contract",
         expect(await mm.negotiationContract()).to.equal(ethers.ZeroAddress);
     })
 
-    it("Should fail if an address of a contract not implementing the interface is passed", async () => {
+    it("Getter should return the address 0 if contract address is not set", async () => {
         let {neg, mm}=await loadFixture(onlyDeployFixture);
-        await expect(mm.setNegotiationContract(await ethers.getAddress(await mm.getAddress())));
+        expect(await mm.negotiationContract()).to.equal(ethers.ZeroAddress)
     })
-   
+    
+    it("Getter should return the address of contract", async () => {
+        let {neg, mm}=await loadFixture(onlyDeployFixture);
+        await expect(mm.setNegotiationContract(await ethers.getAddress(await neg.getAddress()))).not.to.be.reverted;
+        expect(await mm.negotiationContract()).to.equal(await neg.getAddress())
+    })
 })

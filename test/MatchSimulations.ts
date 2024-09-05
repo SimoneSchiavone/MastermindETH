@@ -1797,8 +1797,8 @@ describe("MATCH SIMULATIONS", function(){
         tx=await MastermindGame.connect(user1).setStakeValue(1, stakeValue);
         await expect(tx).not.to.be.reverted;
         await expect(tx).to.emit(MastermindGame, "matchStakeFixed").withArgs(1, stakeValue);
-        expect((await MastermindGame.activeMatches(0)).stake).to.equal(stakeValue);
-        expect((await MastermindGame.activeMatches(1)).stake).to.equal(stakeValue);
+        expect((await MastermindGame.matchesMap(0)).stake).to.equal(stakeValue);
+        expect((await MastermindGame.matchesMap(1)).stake).to.equal(stakeValue);
 
         //Stake deposit by players of match with id 0
         tx=await MastermindGame.connect(user1).depositStake(0, {value: stakeValue});
@@ -1812,8 +1812,8 @@ describe("MATCH SIMULATIONS", function(){
         await expect(tx).to.emit(MastermindGame, "matchStakeDeposited").withArgs(0, user2.address);
         await expect(tx).to.emit(MastermindGame, "newTurnStarted").withArgs(0, 0, anyValue);
 
-        expect((await MastermindGame.activeMatches(0)).deposit1).to.equal(true);
-        expect((await MastermindGame.activeMatches(0)).deposit2).to.equal(true);
+        expect((await MastermindGame.matchesMap(0)).deposit1).to.equal(true);
+        expect((await MastermindGame.matchesMap(0)).deposit2).to.equal(true);
 
         //Stake deposit by players of match with id 1
         tx=await MastermindGame.connect(user1).depositStake(1, {value: stakeValue});
@@ -1827,8 +1827,8 @@ describe("MATCH SIMULATIONS", function(){
         await expect(tx).to.emit(MastermindGame, "matchStakeDeposited").withArgs(1, user3.address); //both have deposited the stake
         await expect(tx).to.emit(MastermindGame, "newTurnStarted").withArgs(1, 0, anyValue);
 
-        expect((await MastermindGame.activeMatches(1)).deposit1).to.equal(true);
-        expect((await MastermindGame.activeMatches(1)).deposit2).to.equal(true);
+        expect((await MastermindGame.matchesMap(1)).deposit1).to.equal(true);
+        expect((await MastermindGame.matchesMap(1)).deposit2).to.equal(true);
 
         //----------First turn of both matches----------
         //hash publication phase match with id 0 between User1 & User2

@@ -21,28 +21,29 @@ describe("StakeNegotiation Contract", function(){
 
     async function firstProposalEmitted() {        
         const {neg, user1, user2} = await loadFixture(neg0Created);
+        // Iteration 0: 50 ---> ?
         await expect(neg.propose(0 , value)).to.emit(neg, "newProposal").withArgs(0, value);
         return {neg, user1, user2};
     }
 
     async function agreementAlmostReached(){
         const {neg, user1, user2} = await loadFixture(firstProposalEmitted);
+        // Iteration 0: 50 <--- 51
         await expect(neg.connect(user2).counterpropose(0, value+1)).not.to.be.reverted;
+        // Iteration 1: 52 ---> 52
         await expect(neg.connect(user1).propose(0, value+2)).not.to.be.reverted;
+        // Iteration 1: 52 <--- 53
         await expect(neg.connect(user2).counterpropose(0, value+3)).not.to.be.reverted;
+        // Iteration 2: 54 ---> ?
         await expect(neg.connect(user1).propose(0, value+4)).not.to.be.reverted;
+        // Iteration 2: 54 <--- 56
         await expect(neg.connect(user2).counterpropose(0, value+6)).not.to.be.reverted;
+        //The negot. creator now can only accept or reject the proposal '56'
         return {neg, user1, user2};
     }
 
-
     async function agreementReached(){
-        const {neg, user1, user2} = await loadFixture(firstProposalEmitted);
-        await expect(neg.connect(user2).counterpropose(0, value+1)).not.to.be.reverted;
-        await expect(neg.connect(user1).propose(0, value+2)).not.to.be.reverted;
-        await expect(neg.connect(user2).counterpropose(0, value+3)).not.to.be.reverted;
-        await expect(neg.connect(user1).propose(0, value+4)).not.to.be.reverted;
-        await expect(neg.connect(user2).counterpropose(0, value+6)).not.to.be.reverted;
+        const {neg, user1, user2} = await loadFixture(agreementAlmostReached);
         await expect(neg.connect(user1).accept(0)).to.emit(neg, "agreementReached").withArgs(0, value+6);
         return {neg, user1, user2};
     }
@@ -294,12 +295,14 @@ describe("StakeNegotiation Contract", function(){
         })
 
         it("Should properly determine the final agreement ", async () => {
-            let {neg, user1, user2}=await loadFixture(firstProposalEmitted);
+            let {neg, user1, user2}=await loadFixture(agreementAlmostReached);
+            /*
             await expect(neg.connect(user2).counterpropose(0, value+1)).not.to.be.reverted;
             await expect(neg.connect(user1).propose(0, value+2)).not.to.be.reverted;
             await expect(neg.connect(user2).counterpropose(0, value+3)).not.to.be.reverted;
             await expect(neg.connect(user1).propose(0, value+4)).not.to.be.reverted;
             await expect(neg.connect(user2).counterpropose(0, value+6)).not.to.be.reverted;
+            */
             await expect(neg.connect(user1).refuse(0)).to.emit(neg, "agreementReached").withArgs(0, value+5);
         })
     })

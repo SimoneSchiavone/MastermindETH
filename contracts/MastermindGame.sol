@@ -36,7 +36,7 @@ contract MastermindGame {
         //---Match stake management---
         uint stake; //amount in wei to put in stake for this match
         uint stakePaymentsOpening; //blocknum of the block in which the stake is fixed
-        bool deposit1; //indicates that player1 has payed the stake amount
+        bool deposit1; //indicates that player1 has paid the stake amount
         bool deposit2;
 
         //---Turns management---
@@ -64,7 +64,7 @@ contract MastermindGame {
         uint disputeWindowOpening; //block number of the block in which the dispute window is opened.
     }
 
-    mapping(uint => Match) public activeMatches; //matchId => Struct
+    mapping(uint => Match) public matchesMap; //matchId => Struct
     uint[] public publicMatchesWaitingForAnOpponent; 
     //array of IDs of matches, where "player2" field is not specified, waiting for a player
     uint[] public privateMatchesWaitingForAnOpponent; 
@@ -101,7 +101,7 @@ contract MastermindGame {
      * the address of the opponent. */ 
     function createMatch() public returns (uint matchId) {
         //Initialize a new match
-        Match storage newMatch=activeMatches[nextMatchId];
+        Match storage newMatch=matchesMap[nextMatchId];
         newMatch.player1=msg.sender;
         newMatch.player2=address(0);
         newMatch.ended=false;
@@ -135,7 +135,7 @@ contract MastermindGame {
             revert GameUtils.InvalidParameter("opponent=yourself");
 
         //Initialize a new match
-        Match storage newMatch=activeMatches[nextMatchId];
+        Match storage newMatch=matchesMap[nextMatchId];
         newMatch.player1=msg.sender;
         newMatch.player2=opponent;
 
@@ -151,13 +151,13 @@ contract MastermindGame {
 
     /** @notice Function that allow to join the match with a specified "id". */
     function joinMatchWithId(uint matchId) public{
-        if(activeMatches[matchId].player1==address(0))
+        if(matchesMap[matchId].player1==address(0))
             revert GameUtils.MatchNotFound(matchId);
 
-        if(activeMatches[matchId].player1==msg.sender)
+        if(matchesMap[matchId].player1==msg.sender)
             revert GameUtils.UnauthorizedAccess("You cannot join a match you have created");
 
-        Match storage m=activeMatches[matchId];
+        Match storage m=matchesMap[matchId];
         if(m.player2!=address(0)){ //second address not zero --> Private match
             if(Utils.uintArrayContains(privateMatchesWaitingForAnOpponent, matchId)){ //Available match
                 //check that I'm the authorized opponent
@@ -194,12 +194,12 @@ contract MastermindGame {
         uint randIdx=Utils.randNo(publicMatchesWaitingForAnOpponent.length); //generate a number in [0, current number of available matches)
         uint id=publicMatchesWaitingForAnOpponent[randIdx]; //get the id of the waiting match associated to the idx generated above
 
-        if(activeMatches[id].player1==msg.sender)
+        if(matchesMap[id].player1==msg.sender)
             revert GameUtils.UnauthorizedAccess("You cannot join a match you have created");
         //it may happen that player1 creates a public match, then he decides to join another game but the "random" procedure
         //provides the id of the same match he has created.
         
-        activeMatches[id].player2=msg.sender;
+        matchesMap[id].player2=msg.sender;
         uint idToDelete=Utils.uintArrayFind(publicMatchesWaitingForAnOpponent,id);
         popByIndex(publicMatchesWaitingForAnOpponent,idToDelete);
     
@@ -222,10 +222,10 @@ contract MastermindGame {
     function setStakeValue(uint matchId, uint value) onlyMatchCreator(matchId) public{
         if(value==0)
             revert GameUtils.InvalidParameter("stakeValue=0");
-        if(activeMatches[matchId].stake!=0)
+        if(matchesMap[matchId].stake!=0)
             revert GameUtils.DuplicateOperation("Stake already fixed");
 
-        Match storage m=activeMatches[matchId];
+        Match storage m=matchesMap[matchId];
         m.stake=value;
         m.stakePaymentsOpening=block.number;
 
@@ -236,9 +236,9 @@ contract MastermindGame {
     function depositStake(uint matchId) onlyMatchParticipant(matchId) payable public{
         if(msg.value==0)
             revert GameUtils.InvalidParameter("WEI sent=0");
-        if(msg.value!=activeMatches[matchId].stake)
+        if(msg.value!=matchesMap[matchId].stake)
             revert GameUtils.InvalidParameter("WEI sent!= agreed stake");
-        Match storage m=activeMatches[matchId];
+        Match storage m=matchesMap[matchId];
         if(msg.sender==m.player1){
             if(!m.deposit1){
                 m.deposit1=true;
@@ -262,7 +262,7 @@ contract MastermindGame {
     /** @notice Function callable by the participants of a match in order to retire the amount of wei they have put in stake.
      * This works only if the phase of wei collection takes more than STAKEPAYMENTDEADLINE blocks. This action will nullify the match.*/
     function requestRefundMatchStake(uint matchId) onlyMatchParticipant(matchId) public {
-        Match storage m=activeMatches[matchId];
+        Match storage m=matchesMap[matchId];
         require((!m.deposit1)||(!m.deposit2),"Both players have deposited the stake");
 
         //The caller must have done the payment before
@@ -305,7 +305,7 @@ contract MastermindGame {
      * the stake payment from both the game participant.*/
     function initializeTurn(uint matchId, uint turnId) internal{
         //no param checks since this function is invoked from other "safe" functions
-        Match storage m=activeMatches[matchId]; 
+        Match storage m=matchesMap[matchId]; 
         
         address _codeMaker;
         //codeMaker selection
@@ -345,7 +345,7 @@ contract MastermindGame {
      * @param turnId id of the current turn
      * @param codeDigest digest of the code produced by the codeMaker */
     function publishCodeHash(uint matchId, uint turnId, bytes32 codeDigest) onlyCodeMaker(matchId, turnId) public{ 
-        Match storage m=activeMatches[matchId];
+        Match storage m=matchesMap[matchId];
         if((m.turns.length)-1!=turnId) //Check that this turn is not already finished.
             revert GameUtils.TurnEnded(turnId);
         if(m.turns[turnId].codeHash!=0)
@@ -365,7 +365,7 @@ contract MastermindGame {
      * @param turnId id of the turn of that march
      * @param codeProposed attempt of finding the code by the codeBreaker */
     function guessTheCode(uint matchId, uint turnId, string memory codeProposed) onlyCodeBreaker(matchId, turnId) public{ 
-        Match storage m=activeMatches[matchId];
+        Match storage m=matchesMap[matchId];
         if((m.turns.length)-1!=turnId) //Check that this turn is not already finished.
             revert GameUtils.TurnEnded(turnId);
 
@@ -397,7 +397,7 @@ contract MastermindGame {
      * @param corrPos number of correct positions, which means also correct code
      * @param wrongPosCorrCol number of wrong positions but right colors */
     function publishFeedback(uint matchId, uint turnId, uint corrPos, uint wrongPosCorrCol) onlyCodeMaker(matchId, turnId) public{
-        Match storage m=activeMatches[matchId];
+        Match storage m=matchesMap[matchId];
         if((m.turns.length)-1!=turnId)
             revert GameUtils.TurnEnded(turnId);
         if(corrPos>codeSize)
@@ -459,7 +459,7 @@ contract MastermindGame {
         if(!Utils.containsCharsOf(availableColors, secret))
             revert GameUtils.InvalidParameter("Invalid color in the secret");
 
-        Match storage m=activeMatches[matchId];
+        Match storage m=matchesMap[matchId];
         Turn storage t=m.turns[turnId];
         if(!t.isSuspended){
             revert GameUtils.TurnNotEnded(turnId);
@@ -488,7 +488,7 @@ contract MastermindGame {
      * the codeMaker was not cheating during the turn. It assigns the earned points to the codeMaker of that turn 
      * and emit the event of turn completion. */
     function endTurn(uint matchId, uint turnId) onlyCodeBreaker(matchId, turnId) public{
-        Match storage m=activeMatches[matchId];
+        Match storage m=matchesMap[matchId];
 
         Turn storage t=m.turns[turnId];
         if((t.isSuspended==false) || bytes(t.secret).length==0) //Case match not suspended or secret not provided
@@ -525,7 +525,7 @@ contract MastermindGame {
      * @param fromPunishment boolean which indicates if the function call comes from "punish". In that 
      * case all the match stake should be send to only one player. */
     function endMatch(uint matchId, bool fromPunishment) internal {
-        Match storage m=activeMatches[matchId];
+        Match storage m=matchesMap[matchId];
         if(m.ended)
             revert GameUtils.UnauthorizedOperation("Match ended");
 
@@ -569,7 +569,7 @@ contract MastermindGame {
      * @param turnId id of the turn reported
      * @param feedbackNum number of the feedback reported (starting from 0) */
     function openDispute(uint matchId, uint turnId, uint feedbackNum) public onlyCodeBreaker(matchId, turnId){
-        Turn storage t=activeMatches[matchId].turns[turnId];
+        Turn storage t=matchesMap[matchId].turns[turnId];
         if(feedbackNum>=t.codeProposals.length)
             revert GameUtils.InvalidParameter("feedbackNum>#guesses emitted");
         if(!t.isSuspended)
@@ -605,7 +605,7 @@ contract MastermindGame {
      * the opponent is AFK, hence the game is stucked due to his inactivity. An event is emitted
      * to trigger the opponent to perform the operation required. */
     function reportOpponentAFK(uint matchId) public onlyMatchParticipant(matchId){
-        Match storage m=activeMatches[matchId];
+        Match storage m=matchesMap[matchId];
         if(m.ended)
             revert GameUtils.UnauthorizedOperation("Match ended");
             
@@ -628,7 +628,7 @@ contract MastermindGame {
      * is AFK for too much time. The action is possible only after have reported the AFK of that player and
      * have waited a move from the afk player for a period of time. */
     function requestRefundForAFK(uint matchId) public onlyMatchParticipant(matchId){
-        Match storage m=activeMatches[matchId];
+        Match storage m=matchesMap[matchId];
         if(m.whoReportedTheLastAFK!=msg.sender) 
             revert GameUtils.UnauthorizedOperation("You have not reported an AFK");
 
@@ -647,10 +647,10 @@ contract MastermindGame {
      * The function sends the match stake to the honest player.
      * @param who cheater player */
     function punish(uint matchId, address who) internal{
-        if(activeMatches[matchId].player1==address(0))
+        if(matchesMap[matchId].player1==address(0))
             revert GameUtils.MatchNotFound(matchId);
 
-        Match storage m=activeMatches[matchId];
+        Match storage m=matchesMap[matchId];
         uint stake=m.stake;
         address honestPlayer;
         if(m.player1==who){
@@ -688,9 +688,9 @@ contract MastermindGame {
     /** @notice this modifier allows the operation at which it is attached only if
      * the caller is the player who has created that match. */
     modifier onlyMatchCreator(uint matchId) {
-        if(activeMatches[matchId].player1==address(0))
+        if(matchesMap[matchId].player1==address(0))
             revert GameUtils.MatchNotFound(matchId);
-        if(activeMatches[matchId].player1!=msg.sender)
+        if(matchesMap[matchId].player1!=msg.sender)
             revert GameUtils.UnauthorizedAccess("You are not the creator of the match");
         _;
     }
@@ -698,9 +698,9 @@ contract MastermindGame {
     /** @notice this modifier allows the operation at which it is attached only if
      * the caller is one of the 2 players of that match. */
     modifier onlyMatchParticipant(uint matchId) {
-        if(activeMatches[matchId].player1==address(0))
+        if(matchesMap[matchId].player1==address(0))
             revert GameUtils.MatchNotFound(matchId);
-        if((activeMatches[matchId].player1!=msg.sender)&&(activeMatches[matchId].player2!=msg.sender))
+        if((matchesMap[matchId].player1!=msg.sender)&&(matchesMap[matchId].player2!=msg.sender))
             revert GameUtils.UnauthorizedAccess("You are not a participant of the match");
         _;
     }
@@ -708,15 +708,15 @@ contract MastermindGame {
     /** @notice this modifier allows the operation at which it is attached only if
      * the caller is the codeBreaker of that turn of the match. */
     modifier onlyCodeMaker (uint matchId, uint turnId){
-        if(activeMatches[matchId].player1==address(0))
+        if(matchesMap[matchId].player1==address(0))
             revert GameUtils.MatchNotFound(matchId);
-        if(activeMatches[matchId].turns.length==0)
+        if(matchesMap[matchId].turns.length==0)
             revert GameUtils.MatchNotStarted(matchId);
-        if(turnId>=activeMatches[matchId].turns.length)
+        if(turnId>=matchesMap[matchId].turns.length)
             revert GameUtils.TurnNotFound(turnId);
-        if((activeMatches[matchId].player1!=msg.sender)&&(activeMatches[matchId].player2!=msg.sender))
+        if((matchesMap[matchId].player1!=msg.sender)&&(matchesMap[matchId].player2!=msg.sender))
             revert GameUtils.UnauthorizedAccess("You are not a participant of the match");
-        if(activeMatches[matchId].turns[turnId].codeMaker!=msg.sender)
+        if(matchesMap[matchId].turns[turnId].codeMaker!=msg.sender)
             revert GameUtils.UnauthorizedOperation("You are not the codeMaker of this turn");
         _;
     }
@@ -724,15 +724,15 @@ contract MastermindGame {
     /** @notice this modifier allows the operation at which it is attached only if
      * the caller is the codeBreaker of that turn of the match. */
     modifier onlyCodeBreaker(uint matchId, uint turnId){
-        if(activeMatches[matchId].player1==address(0))
+        if(matchesMap[matchId].player1==address(0))
             revert GameUtils.MatchNotFound(matchId);
-        if(activeMatches[matchId].turns.length==0)
+        if(matchesMap[matchId].turns.length==0)
             revert GameUtils.MatchNotStarted(matchId);
-        if(turnId>=activeMatches[matchId].turns.length)
+        if(turnId>=matchesMap[matchId].turns.length)
             revert GameUtils.TurnNotFound(turnId);
-        if((activeMatches[matchId].player1!=msg.sender)&&(activeMatches[matchId].player2!=msg.sender))
+        if((matchesMap[matchId].player1!=msg.sender)&&(matchesMap[matchId].player2!=msg.sender))
             revert GameUtils.UnauthorizedAccess("You are not a participant of the match");
-        if(activeMatches[matchId].turns[turnId].codeMaker==msg.sender)
+        if(matchesMap[matchId].turns[turnId].codeMaker==msg.sender)
             revert GameUtils.UnauthorizedOperation("You are not the codeBreaker of this turn");
         _;
     }
@@ -747,10 +747,10 @@ contract MastermindGame {
 
     /** @notice Function that removes a match from the list of the active ones. */
     function dropTheMatch(uint matchId) internal{
-        if(activeMatches[matchId].player1==address(0))
+        if(matchesMap[matchId].player1==address(0))
             revert GameUtils.MatchNotFound(matchId);
         activeMatchesNum--;
-        delete activeMatches[matchId];
+        delete matchesMap[matchId];
     }
 
     /*
@@ -763,28 +763,28 @@ contract MastermindGame {
     /* Function invoked to get the address of the codeMaker of a given turn of a given match.
      * The call fails if the turn/match is not found or because the match is not started. */
     function getCodeMaker(uint matchId, uint turnId) public view returns (address){
-        if(activeMatches[matchId].player1==address(0))
+        if(matchesMap[matchId].player1==address(0))
             revert GameUtils.MatchNotFound(matchId);
-        if(activeMatches[matchId].turns.length==0)
+        if(matchesMap[matchId].turns.length==0)
             revert GameUtils.MatchNotStarted(matchId);
-        if(turnId>=activeMatches[matchId].turns.length)
+        if(turnId>=matchesMap[matchId].turns.length)
             revert GameUtils.TurnNotFound(turnId);
-        return activeMatches[matchId].turns[turnId].codeMaker;
+        return matchesMap[matchId].turns[turnId].codeMaker;
     }
 
     /* Function invoked to get the address of the codeBreaker of a given turn of a given match.
      * The call fails if the turn/match is not found or because the match is not started. */
     function getCodeBreaker(uint matchId, uint turnId) public view returns (address){
-        if(activeMatches[matchId].player1==address(0))
+        if(matchesMap[matchId].player1==address(0))
             revert GameUtils.MatchNotFound(matchId);
-        if(activeMatches[matchId].turns.length==0)
+        if(matchesMap[matchId].turns.length==0)
             revert GameUtils.MatchNotStarted(matchId);
-        if(turnId>=activeMatches[matchId].turns.length)
+        if(turnId>=matchesMap[matchId].turns.length)
             revert GameUtils.TurnNotFound(turnId);
-        if(activeMatches[matchId].player1==activeMatches[matchId].turns[turnId].codeMaker){
-            return activeMatches[matchId].player2;
+        if(matchesMap[matchId].player1==matchesMap[matchId].turns[turnId].codeMaker){
+            return matchesMap[matchId].player2;
         }else{
-            return activeMatches[matchId].player1;
+            return matchesMap[matchId].player1;
         }
     }
 
@@ -792,27 +792,27 @@ contract MastermindGame {
      * to that function fails if the match requested is not present in the list of the
      * matches currently active.*/
     function getActualPoints(uint matchId) public view returns (uint[] memory){
-        if(activeMatches[matchId].player1==address(0))
+        if(matchesMap[matchId].player1==address(0))
             revert GameUtils.MatchNotFound(matchId);
         uint[]memory scores=new uint[](2);
-        scores[0]=activeMatches[matchId].score1;
-        scores[1]=activeMatches[matchId].score2;
+        scores[0]=matchesMap[matchId].score1;
+        scores[1]=matchesMap[matchId].score2;
         return scores;
     }
     
     /* Function invoked to check if a given match is already ended.*/
     function isEnded(uint matchId) public view returns (bool){
-        if(activeMatches[matchId].player1==address(0))
+        if(matchesMap[matchId].player1==address(0))
             revert GameUtils.MatchNotFound(matchId);
-        return activeMatches[matchId].ended;
+        return matchesMap[matchId].ended;
     }
     
     /* Function return the address of the creator of the match whose id is "id". It fails if
      * the give id is not related to any active match.*/
     function getMatchCreator(uint matchId) public view returns (address){
-        if(activeMatches[matchId].player1==address(0))
+        if(matchesMap[matchId].player1==address(0))
             revert GameUtils.MatchNotFound(matchId);
-        return activeMatches[matchId].player1;
+        return matchesMap[matchId].player1;
     }
 
     /* Function returns the address of the second player of the match whose id is "id". It fails if
@@ -820,11 +820,11 @@ contract MastermindGame {
      * Notice that the match creator can have specified the address of the contender but he/she may have not
      * already join the match.*/
     function getSecondPlayer(uint matchId) public view returns (address){
-        if(activeMatches[matchId].player1==address(0))
+        if(matchesMap[matchId].player1==address(0))
             revert GameUtils.MatchNotFound(matchId);
-        if(activeMatches[matchId].player2==address(0))
+        if(matchesMap[matchId].player2==address(0))
             revert GameUtils.Player2NotJoinedYet(matchId); 
-        return activeMatches[matchId].player2;
+        return matchesMap[matchId].player2;
     }
 
     function getGameParam()public view returns (uint _codeSize, uint _extraReward, uint _numberTurns, uint _numberGuesses){
@@ -836,7 +836,7 @@ contract MastermindGame {
     
     /* Function returns the Turn struct associated to the given matchId-turn couple*/
     function getTurn(uint matchId, uint turnId) public view returns (Turn memory){
-        Turn memory i=activeMatches[matchId].turns[turnId];
+        Turn memory i=matchesMap[matchId].turns[turnId];
         return i;
     }
 }

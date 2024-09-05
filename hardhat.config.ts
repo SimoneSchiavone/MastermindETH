@@ -15,8 +15,8 @@ const config: HardhatUserConfig = {
     }
   },
   gasReporter: {
-    enabled: true, //	Produce gas reports with hardhat test
-    currencyDisplayPrecision: 2, //Decimal precision to show nation state currency costs in
+    enabled: false, //	Produce gas reports with hardhat test
+    currencyDisplayPrecision: 2, //Decimal precision to show nation state currency costs
     noColors: false,
     reportFormat:"terminal",
     showMethodSig:true,
