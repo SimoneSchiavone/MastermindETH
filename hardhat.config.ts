@@ -4,7 +4,6 @@ import 'solidity-coverage'
 import "hardhat-gas-reporter"
 
 const config: HardhatUserConfig = {
-  //solidity: "0.8.24",
   solidity: {
     version: "0.8.24",
     settings: {
@@ -15,7 +14,7 @@ const config: HardhatUserConfig = {
     }
   },
   gasReporter: {
-    enabled: false, //	Produce gas reports with hardhat test
+    enabled: false, //Produce gas reports with hardhat test
     currencyDisplayPrecision: 2, //Decimal precision to show nation state currency costs
     noColors: false,
     reportFormat:"terminal",
