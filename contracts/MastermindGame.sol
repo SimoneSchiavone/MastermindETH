@@ -541,10 +541,10 @@ contract MastermindGame {
             }else{
                 if(m.score1<m.score2){
                     emit GameUtils.matchCompleted(matchId, m.player2);
-                    payable(m.player2).transfer(m.stake);
+                    payable(m.player2).transfer(m.stake*2);
                 }else{
                     emit GameUtils.matchCompleted(matchId, m.player1);
-                    payable(m.player1).transfer(m.stake);
+                    payable(m.player1).transfer(m.stake*2);
                 }
             }
         }else{

@@ -9,6 +9,7 @@ const NUMBER_OF_GUESSES=5;
 const NUMBER_OF_TURNS=4;
 const EXTRA_REWARD=2;
 
+const STAKE=20;
 //Deployment fixture
 async function Deployment() {
     const [owner, player1, player2]=await ethers.getSigners();
@@ -79,8 +80,11 @@ async function endturn(contract:any, matchId: number, turnId: number, who:any, w
         if(typeof winner !== 'undefined'){ //Case of NOT TIE
             //Second param of the event: address of the winner
             await expect(tx).to.emit(contract,"matchCompleted").withArgs(matchId, winner);
+            await expect(tx).to.changeEtherBalances([winner, contract] ,[(STAKE*2), -(STAKE*2)]);
         }else{
             await expect(tx).to.emit(contract,"matchCompleted").withArgs(matchId, anyValue);
+            await expect(tx).to.changeEtherBalance(contract, -(STAKE*2));
+            await expect(tx).to.changeEtherBalance(who, STAKE);
         }
     }else{
         //in the next turn the codeBreaker will become the new codeMaker
@@ -137,16 +141,15 @@ describe("MATCH SIMULATIONS", function(){
         /*An event is emitted when the match stake is fixed and then the two players have to pay the agreed amout of WEI.
         An event is emitted whenever a payment is performed. When both players have deposited the stake the first turn 
         of the match will be automatically created. In that case the codeMaker role will be randomly assigned between the 2 players.*/
-        let match_stake=20; 
 
-        tx=await MastermindGame.connect(player1).depositStake(0, {value:match_stake});
+        tx=await MastermindGame.connect(player1).depositStake(0, {value:STAKE});
         await expect(tx).not.to.be.reverted;
-        await expect(tx).to.changeEtherBalances([player1, MastermindGame] ,[-match_stake, match_stake]);
+        await expect(tx).to.changeEtherBalances([player1, MastermindGame] ,[-STAKE, STAKE]);
         await expect(tx).to.emit(MastermindGame,"matchStakeDeposited").withArgs(0, player1.address);
 
-        tx=await MastermindGame.connect(player2).depositStake(0, {value:match_stake});
+        tx=await MastermindGame.connect(player2).depositStake(0, {value:STAKE});
         await expect(tx).not.to.be.reverted;
-        await expect(tx).to.changeEtherBalances([player2, MastermindGame] ,[-match_stake, match_stake]);
+        await expect(tx).to.changeEtherBalances([player2, MastermindGame] ,[-STAKE, STAKE]);
         await expect(tx).to.emit(MastermindGame,"matchStakeDeposited").withArgs(0, player2.address);
 
         //Initialization of the turn 0 of the match 0
@@ -550,20 +553,19 @@ describe("MATCH SIMULATIONS", function(){
         await expect(tx).to.emit(MastermindGame, "secondPlayerJoined").withArgs(player2.address, 0);
         
         //---STAKE FIXED---
-        let match_stake=20;
-        tx=await MastermindGame.connect(player1).setStakeValue(0, match_stake);
+        tx=await MastermindGame.connect(player1).setStakeValue(0, STAKE);
         await expect(tx).not.to.be.reverted;
-        await expect(tx).to.emit(MastermindGame, "matchStakeFixed").withArgs(0, match_stake);
+        await expect(tx).to.emit(MastermindGame, "matchStakeFixed").withArgs(0, STAKE);
         
         //---STAKE DEPOSIT---        
-        tx=await MastermindGame.connect(player1).depositStake(0, {value:match_stake});
+        tx=await MastermindGame.connect(player1).depositStake(0, {value:STAKE});
         await expect(tx).not.to.be.reverted;
-        await expect(tx).to.changeEtherBalances([player1, MastermindGame] ,[-match_stake, match_stake]);
+        await expect(tx).to.changeEtherBalances([player1, MastermindGame] ,[-STAKE, STAKE]);
         await expect(tx).to.emit(MastermindGame,"matchStakeDeposited").withArgs(0, player1.address);
 
-        tx=await MastermindGame.connect(player2).depositStake(0, {value:match_stake});
+        tx=await MastermindGame.connect(player2).depositStake(0, {value:STAKE});
         await expect(tx).not.to.be.reverted;
-        await expect(tx).to.changeEtherBalances([player2, MastermindGame] ,[-match_stake, match_stake]);
+        await expect(tx).to.changeEtherBalances([player2, MastermindGame] ,[-STAKE, STAKE]);
         await expect(tx).to.emit(MastermindGame,"matchStakeDeposited").withArgs(0, player2.address);
 
         //Initialization of the turn 0 of the match 0
@@ -943,15 +945,14 @@ describe("MATCH SIMULATIONS", function(){
         await expect(tx).to.emit(MastermindGame, "matchStakeFixed").withArgs(0, 20);
         
         //---STAKE DEPOSIT---
-        let match_stake=20;
-        tx=await MastermindGame.connect(player1).depositStake(0, {value:match_stake});
+        tx=await MastermindGame.connect(player1).depositStake(0, {value:STAKE});
         await expect(tx).not.to.be.reverted;
-        await expect(tx).to.changeEtherBalances([player1, MastermindGame] ,[-match_stake, match_stake]);
+        await expect(tx).to.changeEtherBalances([player1, MastermindGame] ,[-STAKE, STAKE]);
         await expect(tx).to.emit(MastermindGame,"matchStakeDeposited").withArgs(0, player1.address);
 
-        tx=await MastermindGame.connect(player2).depositStake(0, {value:match_stake});
+        tx=await MastermindGame.connect(player2).depositStake(0, {value:STAKE});
         await expect(tx).not.to.be.reverted;
-        await expect(tx).to.changeEtherBalances([player2, MastermindGame] ,[-match_stake, match_stake]);
+        await expect(tx).to.changeEtherBalances([player2, MastermindGame] ,[-STAKE, STAKE]);
         await expect(tx).to.emit(MastermindGame,"matchStakeDeposited").withArgs(0, player2.address);
         //Initialization of the turn 0 of the match 0
         await expect(tx).to.emit(MastermindGame,"newTurnStarted").withArgs(0, 0, anyValue);
@@ -1273,10 +1274,10 @@ describe("MATCH SIMULATIONS", function(){
             //The codeMaker has earned 5 (attemtps) + 2 (extra) = 7 points
             if((await MastermindGame.getCodeMaker(0, 3))==player1.address){
                 //The last parameter set to zero represents the fact that the match should end with a tie
-                await endturn(MastermindGame, 0, 3, player2, ethers.ZeroAddress);
+                await endturn(MastermindGame, 0, 3, player2);
             }else{
                 //The last parameter set to zero represents the fact that the match should end with a tie
-                await endturn(MastermindGame, 0, 3, player1, ethers.ZeroAddress);
+                await endturn(MastermindGame, 0, 3, player1);
             }
         }       
     })
@@ -1293,7 +1294,6 @@ describe("MATCH SIMULATIONS", function(){
         * are pretty like those in the first/second simulation, so repetitive comments are omitted.*/
        
        const {player1, player2, MastermindGame}=await loadFixture(Deployment);
-       let match_stake=20; //20 wei 
                
        //--PUBLIC MATCH CREATION---
        let tx=await MastermindGame.connect(player1).createMatch();
@@ -1309,14 +1309,14 @@ describe("MATCH SIMULATIONS", function(){
        await expect(tx).to.emit(MastermindGame, "secondPlayerJoined").withArgs(player2.address, 0);
        
        //---STAKE FIXED---
-       tx=await MastermindGame.connect(player1).setStakeValue(0, match_stake);
+       tx=await MastermindGame.connect(player1).setStakeValue(0, STAKE);
        await expect(tx).not.to.be.reverted;
-       await expect(tx).to.emit(MastermindGame, "matchStakeFixed").withArgs(0, match_stake);
+       await expect(tx).to.emit(MastermindGame, "matchStakeFixed").withArgs(0, STAKE);
        
        //---STAKE DEPOSIT BY PLAYER1---        
-       tx=await MastermindGame.connect(player1).depositStake(0, {value:match_stake});
+       tx=await MastermindGame.connect(player1).depositStake(0, {value:STAKE});
        await expect(tx).not.to.be.reverted;
-       await expect(tx).to.changeEtherBalance(player1, -match_stake);
+       await expect(tx).to.changeEtherBalance(player1, -STAKE);
        
        /*---PLAYER 2 DO NOT DEPOSIT THE MATCH STAKE---
        * The other player does not deposit the required match stake within a certain time window that, in this
@@ -1326,7 +1326,7 @@ describe("MATCH SIMULATIONS", function(){
        await hre.network.provider.send("hardhat_mine", ["0x19"]); //mine 25 "dummy" blocks
        tx=await MastermindGame.connect(player1).requestRefundMatchStake(0);
        await expect(tx).not.to.be.reverted;
-       await expect(tx).to.changeEtherBalances([player1, MastermindGame], [match_stake, -match_stake]);
+       await expect(tx).to.changeEtherBalances([player1, MastermindGame], [STAKE, -STAKE]);
        await expect(tx).to.emit(MastermindGame,"matchDeleted").withArgs(0);
     })
 
@@ -1361,19 +1361,18 @@ describe("MATCH SIMULATIONS", function(){
         await expect(tx).to.emit(MastermindGame, "secondPlayerJoined").withArgs(player2.address, 0);
         
         //---STAKE FIXED---
-        let match_stake=20; //20 wei 
-        tx=await MastermindGame.connect(player1).setStakeValue(0, match_stake);
+        tx=await MastermindGame.connect(player1).setStakeValue(0, STAKE);
         await expect(tx).not.to.be.reverted;
-        await expect(tx).to.emit(MastermindGame, "matchStakeFixed").withArgs(0, match_stake);
+        await expect(tx).to.emit(MastermindGame, "matchStakeFixed").withArgs(0, STAKE);
         
         //---STAKE DEPOSIT---        
-        tx=await MastermindGame.connect(player1).depositStake(0, {value:match_stake});
+        tx=await MastermindGame.connect(player1).depositStake(0, {value:STAKE});
         await expect(tx).not.to.be.reverted;
-        await expect(tx).to.changeEtherBalances([player1, MastermindGame] ,[-match_stake, match_stake]);
+        await expect(tx).to.changeEtherBalances([player1, MastermindGame] ,[-STAKE, STAKE]);
         await expect(tx).to.emit(MastermindGame,"matchStakeDeposited").withArgs(0, player1.address);
-        tx=await MastermindGame.connect(player2).depositStake(0, {value:match_stake});
+        tx=await MastermindGame.connect(player2).depositStake(0, {value:STAKE});
         await expect(tx).not.to.be.reverted;
-        await expect(tx).to.changeEtherBalances([player2, MastermindGame] ,[-match_stake, match_stake]);
+        await expect(tx).to.changeEtherBalances([player2, MastermindGame] ,[-STAKE, STAKE]);
         await expect(tx).to.emit(MastermindGame,"matchStakeDeposited").withArgs(0, player2.address);
         //Initialization of the turn 0 of the match 0
         await expect(tx).to.emit(MastermindGame,"newTurnStarted").withArgs(0, 0, anyValue);
@@ -1426,12 +1425,12 @@ describe("MATCH SIMULATIONS", function(){
             if((await MastermindGame.getCodeMaker(0,0))==player1.address){
                 tx=await MastermindGame.connect(player1).requestRefundForAFK(0);
                 await expect(tx).to.emit(MastermindGame,"AFKconfirmed").withArgs(0, player2.address);
-                await expect(tx).to.changeEtherBalances([player1, MastermindGame], [2*match_stake, -2*match_stake]);
+                await expect(tx).to.changeEtherBalances([player1, MastermindGame], [2*STAKE, -2*STAKE]);
                 await expect(tx).to.emit(MastermindGame, "matchDeleted").withArgs(0);
             }else{
                 tx=await MastermindGame.connect(player2).requestRefundForAFK(0);
                 await expect(tx).to.emit(MastermindGame,"AFKconfirmed").withArgs(0, player1.address);
-                await expect(tx).to.changeEtherBalances([player2, MastermindGame], [2*match_stake, -2*match_stake]);
+                await expect(tx).to.changeEtherBalances([player2, MastermindGame], [2*STAKE, -2*STAKE]);
                 await expect(tx).to.emit(MastermindGame, "matchDeleted").withArgs(0);
             }
         }
@@ -1466,19 +1465,18 @@ describe("MATCH SIMULATIONS", function(){
         await expect(tx).to.emit(MastermindGame, "secondPlayerJoined").withArgs(player2.address, 0);
         
         //---STAKE FIXED---
-        let match_stake=20; //20 wei 
-        tx=await MastermindGame.connect(player1).setStakeValue(0, match_stake);
+        tx=await MastermindGame.connect(player1).setStakeValue(0, STAKE);
         await expect(tx).not.to.be.reverted;
-        await expect(tx).to.emit(MastermindGame, "matchStakeFixed").withArgs(0, match_stake);
+        await expect(tx).to.emit(MastermindGame, "matchStakeFixed").withArgs(0, STAKE);
         
         //---STAKE DEPOSIT---        
-        tx=await MastermindGame.connect(player1).depositStake(0, {value:match_stake});
+        tx=await MastermindGame.connect(player1).depositStake(0, {value:STAKE});
         await expect(tx).not.to.be.reverted;
-        await expect(tx).to.changeEtherBalances([player1, MastermindGame] ,[-match_stake, match_stake]);
+        await expect(tx).to.changeEtherBalances([player1, MastermindGame] ,[-STAKE, STAKE]);
         await expect(tx).to.emit(MastermindGame,"matchStakeDeposited").withArgs(0, player1.address);
-        tx=await MastermindGame.connect(player2).depositStake(0, {value:match_stake});
+        tx=await MastermindGame.connect(player2).depositStake(0, {value:STAKE});
         await expect(tx).not.to.be.reverted;
-        await expect(tx).to.changeEtherBalances([player2, MastermindGame] ,[-match_stake, match_stake]);
+        await expect(tx).to.changeEtherBalances([player2, MastermindGame] ,[-STAKE, STAKE]);
         await expect(tx).to.emit(MastermindGame,"matchStakeDeposited").withArgs(0, player2.address);
         //Initialization of the turn 0 of the match 0
         await expect(tx).to.emit(MastermindGame,"newTurnStarted").withArgs(0, 0, anyValue);
@@ -1572,13 +1570,13 @@ describe("MATCH SIMULATIONS", function(){
                 let tx=await MastermindGame.connect(player1).publishSecret(0, 0, code);
                 await expect(tx).not.to.be.reverted;
                 await expect(tx).to.emit(MastermindGame,"cheatingDetected").withArgs(0, 0, player1.address);
-                await expect(tx).to.changeEtherBalances([player2, MastermindGame], [2*match_stake, -2*match_stake]);
+                await expect(tx).to.changeEtherBalances([player2, MastermindGame], [2*STAKE, -2*STAKE]);
                 await expect(tx).to.emit(MastermindGame, "matchDeleted").withArgs(0);
             }else{
                 let tx=await MastermindGame.connect(player2).publishSecret(0, 0, code);
                 await expect(tx).not.to.be.reverted;
                 await expect(tx).to.emit(MastermindGame,"cheatingDetected").withArgs(0, 0, player2.address);
-                await expect(tx).to.changeEtherBalances([player1, MastermindGame], [2*match_stake, -2*match_stake]);
+                await expect(tx).to.changeEtherBalances([player1, MastermindGame], [2*STAKE, -2*STAKE]);
                 await expect(tx).to.emit(MastermindGame, "matchDeleted").withArgs(0);
             }
         }
@@ -1614,20 +1612,19 @@ describe("MATCH SIMULATIONS", function(){
         await expect(tx).to.emit(MastermindGame, "secondPlayerJoined").withArgs(player2.address, 0);
         
         //---STAKE FIXED---
-        let match_stake=20; //20 wei 
-        tx=await MastermindGame.connect(player1).setStakeValue(0, match_stake);
+        tx=await MastermindGame.connect(player1).setStakeValue(0, STAKE);
         await expect(tx).not.to.be.reverted;
-        await expect(tx).to.emit(MastermindGame, "matchStakeFixed").withArgs(0, match_stake);
+        await expect(tx).to.emit(MastermindGame, "matchStakeFixed").withArgs(0, STAKE);
         
         //---STAKE DEPOSIT---        
-        tx=await MastermindGame.connect(player1).depositStake(0, {value:match_stake});
+        tx=await MastermindGame.connect(player1).depositStake(0, {value:STAKE});
         await expect(tx).not.to.be.reverted;
-        await expect(tx).to.changeEtherBalances([player1, MastermindGame] ,[-match_stake, match_stake]);
+        await expect(tx).to.changeEtherBalances([player1, MastermindGame] ,[-STAKE, STAKE]);
         await expect(tx).to.emit(MastermindGame,"matchStakeDeposited").withArgs(0, player1.address);
 
-        tx=await MastermindGame.connect(player2).depositStake(0, {value:match_stake});
+        tx=await MastermindGame.connect(player2).depositStake(0, {value:STAKE});
         await expect(tx).not.to.be.reverted;
-        await expect(tx).to.changeEtherBalances([player2, MastermindGame] ,[-match_stake, match_stake]);
+        await expect(tx).to.changeEtherBalances([player2, MastermindGame] ,[-STAKE, STAKE]);
         await expect(tx).to.emit(MastermindGame,"matchStakeDeposited").withArgs(0, player2.address);
         //Initialization of the turn 0 of the match 0
         await expect(tx).to.emit(MastermindGame,"newTurnStarted").withArgs(0, 0, anyValue);
@@ -1727,13 +1724,13 @@ describe("MATCH SIMULATIONS", function(){
                 tx= await MastermindGame.connect(player2).openDispute(0, 0, 1);
                 await expect(tx).not.to.be.reverted;
                 await expect(tx).to.emit(MastermindGame,"cheatingDetected").withArgs(0, 0, player1.address);
-                await expect(tx).to.changeEtherBalances([player2, MastermindGame], [2*match_stake, -2*match_stake]);
+                await expect(tx).to.changeEtherBalances([player2, MastermindGame], [2*STAKE, -2*STAKE]);
                 await expect(tx).to.emit(MastermindGame, "matchDeleted").withArgs(0);
             }else{
                 tx= await MastermindGame.connect(player1).openDispute(0, 0, 1);
                 await expect(tx).not.to.be.reverted;
                 await expect(tx).to.emit(MastermindGame,"cheatingDetected").withArgs(0, 0, player2.address);
-                await expect(tx).to.changeEtherBalances([player1, MastermindGame], [2*match_stake, -2*match_stake]);
+                await expect(tx).to.changeEtherBalances([player1, MastermindGame], [2*STAKE, -2*STAKE]);
                 await expect(tx).to.emit(MastermindGame, "matchDeleted").withArgs(0);
             }
         }
@@ -1790,25 +1787,24 @@ describe("MATCH SIMULATIONS", function(){
         await expect(tx).to.emit(MastermindGame, "secondPlayerJoined").withArgs(user3.address, 1);
 
         //The match creators of both matches et the matchStake value that has been decided offchain
-        let stakeValue=20; //20 wei
-        tx=await MastermindGame.connect(user1).setStakeValue(0, stakeValue);
+        tx=await MastermindGame.connect(user1).setStakeValue(0, STAKE);
         await expect(tx).not.to.be.reverted;
-        await expect(tx).to.emit(MastermindGame, "matchStakeFixed").withArgs(0, stakeValue);
-        tx=await MastermindGame.connect(user1).setStakeValue(1, stakeValue);
+        await expect(tx).to.emit(MastermindGame, "matchStakeFixed").withArgs(0, STAKE);
+        tx=await MastermindGame.connect(user1).setStakeValue(1, STAKE);
         await expect(tx).not.to.be.reverted;
-        await expect(tx).to.emit(MastermindGame, "matchStakeFixed").withArgs(1, stakeValue);
-        expect((await MastermindGame.matchesMap(0)).stake).to.equal(stakeValue);
-        expect((await MastermindGame.matchesMap(1)).stake).to.equal(stakeValue);
+        await expect(tx).to.emit(MastermindGame, "matchStakeFixed").withArgs(1, STAKE);
+        expect((await MastermindGame.matchesMap(0)).stake).to.equal(STAKE);
+        expect((await MastermindGame.matchesMap(1)).stake).to.equal(STAKE);
 
         //Stake deposit by players of match with id 0
-        tx=await MastermindGame.connect(user1).depositStake(0, {value: stakeValue});
+        tx=await MastermindGame.connect(user1).depositStake(0, {value: STAKE});
         await expect(tx).not.to.be.reverted;
-        await expect(tx).to.changeEtherBalances([MastermindGame, user1], [stakeValue, -stakeValue]);
+        await expect(tx).to.changeEtherBalances([MastermindGame, user1], [STAKE, -STAKE]);
         await expect(tx).to.emit(MastermindGame, "matchStakeDeposited").withArgs(0, user1.address);
 
-        tx=await MastermindGame.connect(user2).depositStake(0, {value: stakeValue});
+        tx=await MastermindGame.connect(user2).depositStake(0, {value: STAKE});
         await expect(tx).not.to.be.reverted;
-        await expect(tx).to.changeEtherBalances([MastermindGame, user2], [stakeValue, -stakeValue]);
+        await expect(tx).to.changeEtherBalances([MastermindGame, user2], [STAKE, -STAKE]);
         await expect(tx).to.emit(MastermindGame, "matchStakeDeposited").withArgs(0, user2.address);
         await expect(tx).to.emit(MastermindGame, "newTurnStarted").withArgs(0, 0, anyValue);
 
@@ -1816,14 +1812,14 @@ describe("MATCH SIMULATIONS", function(){
         expect((await MastermindGame.matchesMap(0)).deposit2).to.equal(true);
 
         //Stake deposit by players of match with id 1
-        tx=await MastermindGame.connect(user1).depositStake(1, {value: stakeValue});
+        tx=await MastermindGame.connect(user1).depositStake(1, {value: STAKE});
         await expect(tx).not.to.be.reverted;
-        await expect(tx).to.changeEtherBalances([MastermindGame, user1], [stakeValue, -stakeValue]);
+        await expect(tx).to.changeEtherBalances([MastermindGame, user1], [STAKE, -STAKE]);
         await expect(tx).to.emit(MastermindGame, "matchStakeDeposited").withArgs(1, user1.address);
 
-        tx=await MastermindGame.connect(user3).depositStake(1, {value: stakeValue});
+        tx=await MastermindGame.connect(user3).depositStake(1, {value: STAKE});
         await expect(tx).not.to.be.reverted;
-        await expect(tx).to.changeEtherBalances([MastermindGame, user3], [stakeValue, -stakeValue]);
+        await expect(tx).to.changeEtherBalances([MastermindGame, user3], [STAKE, -STAKE]);
         await expect(tx).to.emit(MastermindGame, "matchStakeDeposited").withArgs(1, user3.address); //both have deposited the stake
         await expect(tx).to.emit(MastermindGame, "newTurnStarted").withArgs(1, 0, anyValue);
 
