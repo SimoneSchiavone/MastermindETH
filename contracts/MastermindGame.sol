@@ -8,7 +8,7 @@ import "./GameUtils.sol";
 /**
  * @title Mastermind Game Contract
  * @author Simone Schiavone <s.schiavone3@studenti.unipi.it>
- * @notice This smart conctract manages the matches between users for the code breaking game Mastermind.
+ * @notice This smart contract manages the matches between users for the code breaking game Mastermind.
  */
 contract MastermindGame {
     address private gameManager;

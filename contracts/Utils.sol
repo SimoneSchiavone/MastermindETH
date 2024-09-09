@@ -4,7 +4,7 @@ pragma solidity ^0.8.24;
 /**
  * @title Utils contract
  * @author Simone Schiavone <s.schiavone3@studenti.unipi.it>
- * @notice 
+ * @notice Contract which provides some utility functions
  */
 import "hardhat/console.sol";
 
