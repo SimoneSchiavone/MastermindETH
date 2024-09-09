@@ -1,7 +1,6 @@
 import { expect, should } from "chai";
 import {loadFixture} from "@nomicfoundation/hardhat-toolbox/network-helpers";
-import hre, {ethers} from "hardhat";
-const {utils} = require("ethers");
+import {ethers} from "hardhat";
 
 describe("StakeNegotiation Contract", function(){
     const value=50;

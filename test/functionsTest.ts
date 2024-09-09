@@ -1,7 +1,6 @@
 import { expect } from "chai";
 import {loadFixture} from "@nomicfoundation/hardhat-toolbox/network-helpers";
 import hre, {ethers} from "hardhat";
-const {utils} = require("ethers");
 import { anyValue } from "@nomicfoundation/hardhat-chai-matchers/withArgs";
 
 /*
