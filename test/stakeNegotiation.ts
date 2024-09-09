@@ -295,13 +295,6 @@ describe("StakeNegotiation Contract", function(){
 
         it("Should properly determine the final agreement ", async () => {
             let {neg, user1, user2}=await loadFixture(agreementAlmostReached);
-            /*
-            await expect(neg.connect(user2).counterpropose(0, value+1)).not.to.be.reverted;
-            await expect(neg.connect(user1).propose(0, value+2)).not.to.be.reverted;
-            await expect(neg.connect(user2).counterpropose(0, value+3)).not.to.be.reverted;
-            await expect(neg.connect(user1).propose(0, value+4)).not.to.be.reverted;
-            await expect(neg.connect(user2).counterpropose(0, value+6)).not.to.be.reverted;
-            */
             await expect(neg.connect(user1).refuse(0)).to.emit(neg, "agreementReached").withArgs(0, value+5);
         })
     })
