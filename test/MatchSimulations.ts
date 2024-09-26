@@ -2012,7 +2012,7 @@ describe("MATCH SIMULATIONS", function(){
         }
 
         //secret publication by the codeMaker and acceptance by the codeBreaker (Match 1 Turn 1)
-        //The winner is the codeMaker of turn 1 [1, 5]
+        //Scores [5, 5] TIE
         if(await MastermindGame.getCodeMaker(1, 1)==user1.address){
             await secretcodepublish(MastermindGame, 1, 1, user1, "BRTGA");
             let tx=await MastermindGame.connect(user3).endTurn(1, 1);
